@@ -89,6 +89,7 @@ chmod 600 /etc/perses/perses.yaml
 
 # Perses provisioning (the Prometheus datasource).
 mkdir -p /etc/perses/provisioning
+ rm -f /etc/perses/provisioning/*.yaml
 cp -f "$REPO_DIR"/perses/provisioning/*.yaml /etc/perses/provisioning/
 
 # Caddyfile: the Perses dashboard + a token-gated OTLP metrics ingest that local collectors forward

@@ -1,0 +1,184 @@
+apiVersion: perses.dev/v1alpha1
+kind: Dashboard
+metadata:
+  name: eq-dps
+  project: everquest
+spec:
+  display:
+    name: EverQuest DPS
+  duration: 15m
+  refreshInterval: 15s
+
+  panels:
+    dps_by_player:
+      kind: Panel
+      spec:
+        display:
+          name: DPS by player (outgoing)
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'sum by (service_instance_id) (rate(eq_combat_damage_total{eq_combat_direction="outgoing"}[30s]))'
+                  seriesNameFormat: '{{service_instance_id}}'
+
+    total_dps:
+      kind: Panel
+      spec:
+        display:
+          name: Total group DPS (outgoing)
+        plugin:
+          kind: TimeSeriesChart
+          spec: {}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'sum(rate(eq_combat_damage_total{eq_combat_direction="outgoing"}[30s]))'
+                  seriesNameFormat: 'group DPS'
+
+    damage_by_type:
+      kind: Panel
+      spec:
+        display:
+          name: DPS by damage type
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'sum by (eq_combat_damage_type) (rate(eq_combat_damage_total{eq_combat_direction="outgoing"}[30s]))'
+                  seriesNameFormat: '{{eq_combat_damage_type}}'
+
+    total_damage:
+      kind: Panel
+      spec:
+        display:
+          name: Total damage dealt (cumulative)
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'sum by (service_instance_id) (eq_combat_damage_total{eq_combat_direction="outgoing"})'
+                  seriesNameFormat: '{{service_instance_id}}'
+
+    attack:
+      kind: Panel
+      spec:
+        display:
+          name: Attack rating
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'eq_character_attack_ratio'
+                  seriesNameFormat: '{{service_instance_id}}'
+
+    haste:
+      kind: Panel
+      spec:
+        display:
+          name: Haste (%)
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'eq_character_haste_percent'
+                  seriesNameFormat: '{{service_instance_id}}'
+
+    incoming_dps:
+      kind: Panel
+      spec:
+        display:
+          name: Damage taken (incoming DPS)
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'sum by (service_instance_id) (rate(eq_combat_damage_total{eq_combat_direction="incoming"}[30s]))'
+                  seriesNameFormat: '{{service_instance_id}}'
+
+  layouts:
+    - kind: Grid
+      spec:
+        display:
+          title: DPS
+        items:
+          - x: 0
+            y: 0
+            width: 24
+            height: 8
+            content: { $ref: '#/spec/panels/dps_by_player' }
+          - x: 0
+            y: 8
+            width: 12
+            height: 7
+            content: { $ref: '#/spec/panels/total_dps' }
+          - x: 12
+            y: 8
+            width: 12
+            height: 7
+            content: { $ref: '#/spec/panels/damage_by_type' }
+          - x: 0
+            y: 15
+            width: 12
+            height: 7
+            content: { $ref: '#/spec/panels/attack' }
+          - x: 12
+            y: 15
+            width: 12
+            height: 7
+            content: { $ref: '#/spec/panels/haste' }
+          - x: 0
+            y: 22
+            width: 12
+            height: 7
+            content: { $ref: '#/spec/panels/total_damage' }
+          - x: 12
+            y: 22
+            width: 12
+            height: 7
+            content: { $ref: '#/spec/panels/incoming_dps' }
