@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
     inputs:
       server_type:
-        description: Hetzner server type
-        default: cx22
+        description: Hetzner server type (must be x86 — setup.sh installs amd64 Perses)
+        default: cpx11
       location:
         description: Hetzner location
         default: nbg1
