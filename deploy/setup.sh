@@ -14,6 +14,10 @@ source "$REPO_DIR/deploy.env"
 set +a
 : "${PERSES_DOMAIN:?}" "${PERSES_ENCRYPTION_KEY:?}" "${DISCORD_CLIENT_ID:?}" "${DISCORD_CLIENT_SECRET:?}"
 
+# Prod is always HTTPS behind Caddy; derive the values the config template expects.
+export PERSES_EXTERNAL_URL="https://${PERSES_DOMAIN}"
+export PERSES_COOKIE_SECURE="true"
+
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y curl gettext-base debian-keyring debian-archive-keyring apt-transport-https gnupg ufw

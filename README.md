@@ -27,6 +27,13 @@ Discord directly — no proxy or broker.**
    non-`localhost` redirects; Caddy issues the certificate automatically).
 3. **Server** — e.g. a small Hetzner Cloud VM.
 
+### Test the Discord login locally first (no server, no Docker, no CI)
+Discord permits `http://localhost` redirects, so you can trial the whole login on your machine:
+1. In the Discord app, add the redirect `http://localhost:8080/api/auth/providers/oauth/discord/callback`.
+2. `cp .env.example .env`, then set `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` (and `PERSES_ENCRYPTION_KEY` = `openssl rand -hex 16`). Local defaults (`http://localhost:8080`, `secure=false`) are already set.
+3. `./deploy/run-local.sh` — downloads Perses once, renders the config, serves on `:8080`.
+4. Open http://localhost:8080 → **Log in with Discord**.
+
 ### Deploy via GitHub Actions (no local secrets, no token handling)
 The `deploy` workflow provisions a Hetzner Cloud VM (if absent) and installs Perses + Caddy over
 SSH, rendering the config from secrets at deploy time. Run it from the **Actions** tab

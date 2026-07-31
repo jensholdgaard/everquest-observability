@@ -14,7 +14,7 @@ security:
   encryption_key: "${PERSES_ENCRYPTION_KEY}"
   cookie:
     same_site: lax
-    secure: true # served over HTTPS in production (Caddy terminates TLS)
+    secure: ${PERSES_COOKIE_SECURE} # true behind HTTPS (prod), false for http://localhost testing
 
   authentication:
     providers:
@@ -32,4 +32,5 @@ security:
           # Discord's /users/@me returns `username`; use it as the Perses login identity.
           custom_login_property: username
           # MUST exactly match a redirect URL registered in the Discord application.
-          redirect_uri: "https://${PERSES_DOMAIN}/api/auth/providers/oauth/discord/callback"
+          # Local: http://localhost:8080/...  Prod: https://<domain>/...
+          redirect_uri: "${PERSES_EXTERNAL_URL}/api/auth/providers/oauth/discord/callback"
