@@ -1,0 +1,43 @@
+# Gateway OTel collector on the VM: authenticates guild members (per-member bearer tokens) and
+# routes signals — metrics into the on-box Prometheus; logs to Ourios when it's ready.
+# Caddy terminates TLS and proxies /otlp/* here; this listener stays on localhost.
+extensions:
+  bearertokenauth:
+    # One token per line; anything after whitespace is a comment (we put the member name there).
+    # Managed with deploy/tokens.sh — add/revoke without touching this config.
+    filename: /etc/eq-otel/tokens.txt
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4319
+        auth:
+          authenticator: bearertokenauth
+
+processors:
+  batch:
+    timeout: 2s
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+
+exporters:
+  # Metrics -> on-box Prometheus OTLP receiver.
+  otlphttp/prometheus:
+    metrics_endpoint: http://127.0.0.1:9090/api/v1/otlp/v1/metrics
+  # Logs land here (dropped) until Ourios is wired in.
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [bearertokenauth]
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]   # TODO: otlphttp -> Ourios

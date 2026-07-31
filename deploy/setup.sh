@@ -12,7 +12,7 @@ set -a
 # shellcheck disable=SC1091
 source "$REPO_DIR/deploy.env"
 set +a
-: "${PERSES_DOMAIN:?}" "${PERSES_ENCRYPTION_KEY:?}" "${DISCORD_CLIENT_ID:?}" "${DISCORD_CLIENT_SECRET:?}" "${INGEST_TOKEN:?}"
+: "${PERSES_DOMAIN:?}" "${PERSES_ENCRYPTION_KEY:?}" "${DISCORD_CLIENT_ID:?}" "${DISCORD_CLIENT_SECRET:?}"
 
 # Prod is always HTTPS behind Caddy; derive the values the config template expects.
 export PERSES_EXTERNAL_URL="https://${PERSES_DOMAIN}"
@@ -82,6 +82,32 @@ RestartSec=3
 WantedBy=multi-user.target
 UNIT
 
+# --- Gateway collector (per-member token auth; routes metrics -> Prometheus) -
+OTELCOL_VERSION="0.157.0"  # pinned; the unauthenticated GitHub API "latest" lookup gets rate-limited
+if [ ! -x /usr/local/bin/otelcol-contrib ]; then
+  tmp="$(mktemp -d)"
+  curl -fsSL "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v${OTELCOL_VERSION}/otelcol-contrib_${OTELCOL_VERSION}_linux_amd64.tar.gz" -o "$tmp/oc.tgz"
+  tar xzf "$tmp/oc.tgz" -C "$tmp" otelcol-contrib
+  install -m 0755 "$tmp/otelcol-contrib" /usr/local/bin/otelcol-contrib
+  rm -rf "$tmp"
+fi
+mkdir -p /etc/eq-otel
+cp -f "$REPO_DIR/collector/gateway.yaml" /etc/eq-otel/gateway.yaml
+touch /etc/eq-otel/tokens.txt
+chmod 600 /etc/eq-otel/tokens.txt
+cat > /etc/systemd/system/eq-gateway.service <<'UNIT'
+[Unit]
+Description=EQ OTel gateway collector
+After=network-online.target
+Wants=network-online.target
+[Service]
+ExecStart=/usr/local/bin/otelcol-contrib --config /etc/eq-otel/gateway.yaml
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+UNIT
+
 # --- Render configs ---------------------------------------------------------
 mkdir -p /etc/perses
 envsubst < "$REPO_DIR/perses/perses.yaml" > /etc/perses/perses.yaml
@@ -92,20 +118,15 @@ mkdir -p /etc/perses/provisioning
  rm -f /etc/perses/provisioning/*.yaml
 cp -f "$REPO_DIR"/perses/provisioning/*.yaml /etc/perses/provisioning/
 
-# Caddyfile: the Perses dashboard + a token-gated OTLP metrics ingest that local collectors forward
-# to. ${PERSES_DOMAIN}/${INGEST_TOKEN} are shell-expanded; Caddy's own {uri}/{header.*} are not.
+# Caddyfile: Perses dashboard + OTLP ingest. Auth happens at the gateway collector (per-member
+# bearer tokens in /etc/eq-otel/tokens.txt), Caddy only terminates TLS and routes.
 cat > /etc/caddy/Caddyfile <<CADDY
 ${PERSES_DOMAIN} {
 	encode zstd gzip
 
-	# OTLP metrics ingest -> on-box Prometheus. Requires: Authorization: Bearer <INGEST_TOKEN>.
+	# OTLP ingest -> gateway collector (authenticates, then routes metrics to Prometheus).
 	handle_path /otlp/* {
-		@authok header Authorization "Bearer ${INGEST_TOKEN}"
-		handle @authok {
-			rewrite * /api/v1/otlp{uri}
-			reverse_proxy 127.0.0.1:9090
-		}
-		respond "unauthorized" 401
+		reverse_proxy 127.0.0.1:4319
 	}
 
 	# Perses dashboard.
@@ -138,6 +159,8 @@ yes | ufw enable   >/dev/null 2>&1 || true
 systemctl daemon-reload
 systemctl enable --now prometheus
 systemctl restart prometheus
+systemctl enable --now eq-gateway
+systemctl restart eq-gateway
 systemctl enable --now perses
 systemctl restart perses
 systemctl enable --now caddy
