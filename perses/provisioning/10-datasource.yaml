@@ -1,4 +1,5 @@
-# Default Perses datasource: the on-box Prometheus that ingests OTLP metrics.
+# Default Perses datasource: the on-box Prometheus. Uses an HTTPProxy so the BROWSER queries Perses
+# (same origin) and Perses forwards to Prometheus on the server's localhost — not the user's machine.
 apiVersion: perses.dev/v1alpha1
 kind: GlobalDatasource
 metadata:
@@ -10,4 +11,20 @@ spec:
   plugin:
     kind: PrometheusDatasource
     spec:
-      directUrl: http://127.0.0.1:9090
+      proxy:
+        kind: HTTPProxy
+        spec:
+          url: http://127.0.0.1:9090
+          allowedEndpoints:
+            - endpointPattern: /api/v1/labels
+              method: POST
+            - endpointPattern: /api/v1/series
+              method: POST
+            - endpointPattern: /api/v1/metadata
+              method: GET
+            - endpointPattern: /api/v1/query
+              method: POST
+            - endpointPattern: /api/v1/query_range
+              method: POST
+            - endpointPattern: /api/v1/label/([a-zA-Z0-9_-]+)/values
+              method: GET
