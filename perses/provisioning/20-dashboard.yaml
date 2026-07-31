@@ -34,7 +34,7 @@ spec:
       kind: Panel
       spec:
         display:
-          name: DPS over time (by source)
+          name: DPS history (by source)
         plugin:
           kind: TimeSeriesChart
           spec:
@@ -166,7 +166,7 @@ spec:
       kind: Panel
       spec:
         display:
-          name: Healing over time
+          name: Healing history
         plugin:
           kind: TimeSeriesChart
           spec:
