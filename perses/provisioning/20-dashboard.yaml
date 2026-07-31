@@ -198,6 +198,27 @@ spec:
                   seriesNameFormat: '{{eq_combat_source}}'
 
 
+    damage_by_target:
+      kind: Panel
+      spec:
+        display:
+          name: DPS by target (what we're killing)
+        plugin:
+          kind: BarChart
+          spec:
+            calculation: last
+            sort: desc
+            mode: value
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'topk(15, sum by (eq_combat_target) (rate(eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player", eq_zone_name=~"$zone"}[60s])) > 0)'
+                  seriesNameFormat: '{{eq_combat_target}}'
+
+
   layouts:
     - kind: Grid
       spec:
@@ -249,3 +270,8 @@ spec:
             width: 12
             height: 8
             content: { $ref: '#/spec/panels/heal_over_time' }
+          - x: 0
+            y: 40
+            width: 24
+            height: 8
+            content: { $ref: '#/spec/panels/damage_by_target' }
