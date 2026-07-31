@@ -69,11 +69,20 @@ class Bot(discord.Client):
         super().__init__(intents=discord.Intents.default())
         self.tree = app_commands.CommandTree(self)
 
+    async def _sync(self, guild):
+        self.tree.copy_global_to(guild=guild)
+        cmds = await self.tree.sync(guild=guild)
+        print(f"synced {[c.name for c in cmds]} to guild '{guild.name}'", flush=True)
+
     async def on_ready(self):
+        print(f"ready as {self.user}; guilds: {[g.name for g in self.guilds]}", flush=True)
         for guild in self.guilds:
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-        print(f"ready as {self.user}; guilds: {[g.name for g in self.guilds]}")
+            await self._sync(guild)
+
+    async def on_guild_join(self, guild):
+        # Invited after startup: register the slash commands immediately.
+        print(f"joined guild '{guild.name}'", flush=True)
+        await self._sync(guild)
 
 
 bot = Bot()
