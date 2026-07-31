@@ -27,12 +27,31 @@ Discord directly — no proxy or broker.**
    non-`localhost` redirects; Caddy issues the certificate automatically).
 3. **Server** — e.g. a small Hetzner Cloud VM.
 
-### Deploy (outline)
-1. `cp .env.example .env` and fill in `PERSES_DOMAIN`, `PERSES_ENCRYPTION_KEY`
-   (`openssl rand -hex 16`), `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`.
-2. Render `perses/perses.yaml` with those values (the `REPLACE_*` placeholders).
-3. Run Perses (`:8080`) behind Caddy (`PERSES_DOMAIN` → auto-TLS → `127.0.0.1:8080`).
-4. Visit `https://<your-domain>` → **Log in with Discord**.
+### Deploy via GitHub Actions (no local secrets, no token handling)
+The `deploy` workflow provisions a Hetzner Cloud VM (if absent) and installs Perses + Caddy over
+SSH, rendering the config from secrets at deploy time. Run it from the **Actions** tab
+(`workflow_dispatch`).
+
+Add these under **Settings → Secrets and variables → Actions**:
+
+| Kind | Name | Value |
+|---|---|---|
+| Secret | `HCLOUD_TOKEN` | Hetzner Cloud API token (read-write; dedicated, revocable) |
+| Secret | `SSH_PRIVATE_KEY` | Private key CI uses to reach the server (its public half is auto-registered with Hetzner) |
+| Secret | `PERSES_ENCRYPTION_KEY` | `openssl rand -hex 16` |
+| Secret | `DISCORD_CLIENT_ID` | Discord app client id |
+| Secret | `DISCORD_CLIENT_SECRET` | Discord app client secret |
+| Variable | `PERSES_DOMAIN` | e.g. `dps.example.com` |
+
+Flow:
+1. Add the secrets/variable above; generate an SSH keypair (`ssh-keygen -t ed25519`) and paste the **private** key into `SSH_PRIVATE_KEY`.
+2. Run the **deploy** workflow. It prints the server IP.
+3. Point `PERSES_DOMAIN`'s A record at that IP (Caddy then obtains the TLS cert automatically).
+4. Set the Discord app's redirect to `https://<PERSES_DOMAIN>/api/auth/providers/oauth/discord/callback`.
+5. Visit `https://<PERSES_DOMAIN>` → **Log in with Discord**.
+
+Because all code here is public, security rests entirely on the Actions secrets and real auth — never
+on the repo being hidden.
 
 ## Notes / roadmap
 - **Guild gating:** Discord OAuth logs in *any* Discord user. Restricting to guild members is a

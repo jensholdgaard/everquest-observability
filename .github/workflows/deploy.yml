@@ -1,0 +1,86 @@
+# Provisions a Hetzner Cloud VM (if absent) and deploys Perses + Caddy over SSH.
+# All credentials come from GitHub Actions secrets — nothing sensitive lives in this repo.
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_type:
+        description: Hetzner server type
+        default: cx22
+      location:
+        description: Hetzner location
+        default: nbg1
+
+concurrency: deploy   # never run two deploys at once
+
+env:
+  SERVER_NAME: eq-perses
+  SSH_KEY_NAME: eq-perses-ci
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install hcloud CLI
+        run: |
+          curl -fsSL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz | tar xz hcloud
+          sudo install -m 0755 hcloud /usr/local/bin/hcloud
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id
+          chmod 600 ~/.ssh/id
+          ssh-keygen -y -f ~/.ssh/id > ~/.ssh/id.pub
+
+      - name: Ensure server exists
+        id: server
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+        run: |
+          hcloud ssh-key describe "$SSH_KEY_NAME" >/dev/null 2>&1 \
+            || hcloud ssh-key create --name "$SSH_KEY_NAME" --public-key-from-file ~/.ssh/id.pub
+          if ! hcloud server describe "$SERVER_NAME" >/dev/null 2>&1; then
+            hcloud server create --name "$SERVER_NAME" \
+              --type "${{ inputs.server_type }}" --image ubuntu-24.04 \
+              --location "${{ inputs.location }}" --ssh-key "$SSH_KEY_NAME"
+          fi
+          IP=$(hcloud server ip "$SERVER_NAME")
+          echo "ip=$IP" >> "$GITHUB_OUTPUT"
+          echo "Server IP: $IP"
+
+      - name: Wait for SSH
+        run: |
+          for i in $(seq 1 30); do
+            ssh -i ~/.ssh/id -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 \
+              root@${{ steps.server.outputs.ip }} true 2>/dev/null && exit 0
+            sleep 10
+          done
+          echo "SSH never came up" >&2; exit 1
+
+      - name: Deploy
+        env:
+          HOST: ${{ steps.server.outputs.ip }}
+        run: |
+          # Assemble the deploy-time env file locally (from secrets), scp it, never commit it.
+          umask 077
+          cat > deploy.env <<EOF
+          PERSES_DOMAIN=${{ vars.PERSES_DOMAIN }}
+          PERSES_ENCRYPTION_KEY=${{ secrets.PERSES_ENCRYPTION_KEY }}
+          DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
+          DISCORD_CLIENT_SECRET=${{ secrets.DISCORD_CLIENT_SECRET }}
+          EOF
+          ssh -i ~/.ssh/id -o StrictHostKeyChecking=accept-new root@"$HOST" 'mkdir -p /root/eq-obs'
+          scp -i ~/.ssh/id -o StrictHostKeyChecking=accept-new -r perses deploy deploy.env root@"$HOST":/root/eq-obs/
+          ssh -i ~/.ssh/id -o StrictHostKeyChecking=accept-new root@"$HOST" 'bash /root/eq-obs/deploy/setup.sh'
+          rm -f deploy.env
+
+      - name: Next steps
+        run: |
+          echo "Deployed to ${{ steps.server.outputs.ip }}"
+          echo "1. Point an A record for \${PERSES_DOMAIN} at that IP."
+          echo "2. Ensure the Discord app redirect is https://\${PERSES_DOMAIN}/api/auth/providers/oauth/discord/callback"
+          echo "3. Visit https://\${PERSES_DOMAIN} and Log in with Discord."
