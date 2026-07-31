@@ -1,0 +1,7 @@
+# Never commit secrets or local state.
+.env
+*.secret
+*.local.yaml
+secrets/
+perses/data/
+data/

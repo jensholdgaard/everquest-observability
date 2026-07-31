@@ -1,0 +1,6 @@
+# Caddy reverse proxy with automatic HTTPS (Let's Encrypt) in front of Perses.
+# Set PERSES_DOMAIN to your real domain (A record -> the server's public IP).
+{$PERSES_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080
+}

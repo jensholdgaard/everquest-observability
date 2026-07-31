@@ -1,0 +1,36 @@
+# Perses server configured for Discord SSO (generic OAuth provider — no proxy/broker).
+# Validated to boot with Perses v0.54.0.
+#
+# SECRETS: do not commit real values. Fill client_id/client_secret/encryption_key from your
+# environment at deploy time (see .env.example and the README). Placeholders below are safe to commit.
+database:
+  file:
+    folder: "./data"
+    extension: "json"
+
+security:
+  enable_auth: true
+  # 32-byte key that signs/encrypts session material. Generate: `openssl rand -hex 16`.
+  encryption_key: "REPLACE_WITH_32_BYTE_HEX"
+  cookie:
+    same_site: lax
+    secure: true # served over HTTPS in production (Caddy terminates TLS)
+
+  authentication:
+    providers:
+      enable_native: false
+      oauth:
+        - slug_id: discord
+          name: Discord
+          client_id: "REPLACE_DISCORD_CLIENT_ID"
+          client_secret: "REPLACE_DISCORD_CLIENT_SECRET"
+          scopes:
+            - identify
+          auth_url: https://discord.com/oauth2/authorize
+          token_url: https://discord.com/api/oauth2/token
+          user_infos_url: https://discord.com/api/users/@me
+          # Discord's /users/@me returns `username`; use it as the Perses login identity.
+          custom_login_property: username
+          # MUST exactly match a redirect URL registered in the Discord application.
+          # Format: https://<your-domain>/api/auth/providers/oauth/discord/callback
+          redirect_uri: "https://REPLACE_DOMAIN/api/auth/providers/oauth/discord/callback"
