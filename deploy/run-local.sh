@@ -24,6 +24,14 @@ fi
 mkdir -p "$ROOT/.local/data"
 envsubst < perses/perses.yaml > "$ROOT/.local/perses.yaml"
 
-echo "Perses starting on ${PERSES_EXTERNAL_URL} — open it and click 'Log in with Discord' (Ctrl-C to stop)."
+# OAuth state cookies are Secure+SameSite=None, so the login only completes over HTTPS.
+# Generate a self-signed localhost cert (your browser warns once — accept it).
+if [ ! -f "$ROOT/.local/localhost.crt" ]; then
+  openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+    -keyout "$ROOT/.local/localhost.key" -out "$ROOT/.local/localhost.crt" \
+    -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" 2>/dev/null
+fi
+
+echo "Perses starting on ${PERSES_EXTERNAL_URL} (self-signed TLS — accept the browser warning once, then 'Log in with Discord'). Ctrl-C to stop."
 cd "$ROOT/.local"
-exec ./perses --config ./perses.yaml
+exec ./perses --config ./perses.yaml --web.tls-cert-file ./localhost.crt --web.tls-key-file ./localhost.key
