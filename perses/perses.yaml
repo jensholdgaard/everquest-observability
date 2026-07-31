@@ -21,6 +21,16 @@ security:
     same_site: lax
     secure: ${PERSES_COOKIE_SECURE} # true behind HTTPS (prod), false for http://localhost testing
 
+  # Every logged-in Discord user can VIEW all dashboards (a shared guild meter). No write access.
+  authorization:
+    provider:
+      native:
+        guest_permissions:
+          - actions:
+              - read
+            scopes:
+              - "*"
+
   authentication:
     providers:
       enable_native: false
