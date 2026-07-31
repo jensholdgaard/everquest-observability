@@ -78,7 +78,7 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-ReadWritePaths=/etc/eq-otel/tokens.txt /etc/perses/provisioning
+ReadWritePaths=/etc/eq-otel /etc/perses/provisioning
 EOF
 
 # --- 5. Root-owned path units: react to bot's file changes -------------------

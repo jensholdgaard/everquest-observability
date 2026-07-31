@@ -36,7 +36,8 @@ USR
     ;;
   revoke)
     [ -n "$member" ] || { echo "usage: tokens.sh revoke <member> [discord_username]"; exit 1; }
-    "${SSH[@]}" "sed -i '/ # $member\$/d' /etc/eq-otel/tokens.txt
+    "${SSH[@]}" "grep -v ' # $member\$' /etc/eq-otel/tokens.txt > /tmp/tk.\$\$ || true
+      cat /tmp/tk.\$\$ > /etc/eq-otel/tokens.txt; rm -f /tmp/tk.\$\$   # in-place: keep inode/ownership for the bot's mount
       rm -f /etc/perses/provisioning/user-$discord.yaml /var/lib/perses/data/users/$discord.json
       systemctl restart eq-gateway perses"
     echo "Revoked $member (dashboard user $discord removed)."
