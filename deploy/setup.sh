@@ -12,7 +12,7 @@ set -a
 # shellcheck disable=SC1091
 source "$REPO_DIR/deploy.env"
 set +a
-: "${PERSES_DOMAIN:?}" "${PERSES_ENCRYPTION_KEY:?}" "${DISCORD_CLIENT_ID:?}" "${DISCORD_CLIENT_SECRET:?}"
+: "${PERSES_DOMAIN:?}" "${PERSES_ENCRYPTION_KEY:?}" "${DISCORD_CLIENT_ID:?}" "${DISCORD_CLIENT_SECRET:?}" "${INGEST_TOKEN:?}"
 
 # Prod is always HTTPS behind Caddy; derive the values the config template expects.
 export PERSES_EXTERNAL_URL="https://${PERSES_DOMAIN}"
@@ -42,13 +42,75 @@ if ! command -v caddy >/dev/null 2>&1; then
   apt-get install -y caddy
 fi
 
+# --- Prometheus (OTLP receiver → metrics store queried by Perses) -----------
+if [ ! -x /usr/local/bin/prometheus ]; then
+  pver=$(curl -s https://api.github.com/repos/prometheus/prometheus/releases/latest | grep -m1 tag_name | sed -E 's/.*"v?([^"]+)".*/\1/')
+  tmp="$(mktemp -d)"
+  curl -fsSL "https://github.com/prometheus/prometheus/releases/download/v${pver}/prometheus-${pver}.linux-amd64.tar.gz" -o "$tmp/prom.tgz"
+  tar xzf "$tmp/prom.tgz" -C "$tmp"
+  install -m 0755 "$tmp"/prometheus-*/prometheus /usr/local/bin/prometheus
+  rm -rf "$tmp"
+fi
+mkdir -p /etc/prometheus /var/lib/prometheus
+cat > /etc/prometheus/prometheus.yml <<'YML'
+global:
+  scrape_interval: 30s
+# Native OTLP ingestion: metrics POSTed to /api/v1/otlp/v1/metrics. Promote key OTLP resource
+# attributes (incl. the character identity) to Prometheus labels so panels can filter by player.
+otlp:
+  promote_resource_attributes:
+    - service.name
+    - service.instance.id
+    - service.version
+  keep_identifying_resource_attributes: true
+  # Escape dots to underscores so PromQL names are plain (eq_combat_damage_total), no UTF-8 quoting.
+  translation_strategy: UnderscoreEscapingWithSuffixes
+storage:
+  tsdb:
+    out_of_order_time_window: 30m
+YML
+cat > /etc/systemd/system/prometheus.service <<'UNIT'
+[Unit]
+Description=Prometheus
+After=network-online.target
+Wants=network-online.target
+[Service]
+ExecStart=/usr/local/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus --web.listen-address=127.0.0.1:9090 --web.enable-otlp-receiver
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
+UNIT
+
 # --- Render configs ---------------------------------------------------------
 mkdir -p /etc/perses
 envsubst < "$REPO_DIR/perses/perses.yaml" > /etc/perses/perses.yaml
 chmod 600 /etc/perses/perses.yaml
 
-# Caddyfile: literal domain (no reliance on Caddy env at runtime).
-printf '%s {\n\tencode zstd gzip\n\treverse_proxy 127.0.0.1:8080\n}\n' "$PERSES_DOMAIN" > /etc/caddy/Caddyfile
+# Perses provisioning (the Prometheus datasource).
+mkdir -p /etc/perses/provisioning
+cp -f "$REPO_DIR"/perses/provisioning/*.yaml /etc/perses/provisioning/
+
+# Caddyfile: the Perses dashboard + a token-gated OTLP metrics ingest that local collectors forward
+# to. ${PERSES_DOMAIN}/${INGEST_TOKEN} are shell-expanded; Caddy's own {uri}/{header.*} are not.
+cat > /etc/caddy/Caddyfile <<CADDY
+${PERSES_DOMAIN} {
+	encode zstd gzip
+
+	# OTLP metrics ingest -> on-box Prometheus. Requires: Authorization: Bearer <INGEST_TOKEN>.
+	handle_path /otlp/* {
+		@authok header Authorization "Bearer ${INGEST_TOKEN}"
+		handle @authok {
+			rewrite * /api/v1/otlp{uri}
+			reverse_proxy 127.0.0.1:9090
+		}
+		respond "unauthorized" 401
+	}
+
+	# Perses dashboard.
+	reverse_proxy 127.0.0.1:8080
+}
+CADDY
 
 # --- Perses systemd unit ----------------------------------------------------
 cat > /etc/systemd/system/perses.service <<'UNIT'
@@ -73,6 +135,8 @@ yes | ufw enable   >/dev/null 2>&1 || true
 
 # --- Start / restart --------------------------------------------------------
 systemctl daemon-reload
+systemctl enable --now prometheus
+systemctl restart prometheus
 systemctl enable --now perses
 systemctl restart perses
 systemctl enable --now caddy

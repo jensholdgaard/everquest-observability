@@ -1,0 +1,13 @@
+# Default Perses datasource: the on-box Prometheus that ingests OTLP metrics.
+apiVersion: perses.dev/v1alpha1
+kind: GlobalDatasource
+metadata:
+  name: prometheus
+spec:
+  display:
+    name: Prometheus (EverQuest metrics)
+  default: true
+  plugin:
+    kind: PrometheusDatasource
+    spec:
+      directUrl: http://127.0.0.1:9090

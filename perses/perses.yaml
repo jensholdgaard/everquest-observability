@@ -8,6 +8,11 @@ database:
     folder: "./data"
     extension: "json"
 
+# Load provisioned resources (the Prometheus GlobalDatasource) at startup.
+provisioning:
+  folders:
+    - /etc/perses/provisioning
+
 security:
   enable_auth: true
   # 32-byte key that signs/encrypts session material. Generate: `openssl rand -hex 16`.

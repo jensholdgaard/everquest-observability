@@ -1,0 +1,44 @@
+# Local OTel collector each guild member runs. Zeal posts OTLP to it on localhost; it batches and
+# forwards — metrics to the central ingest (token-authenticated), logs to Ourios (when ready).
+# Zeal stays pointed at http://127.0.0.1:4318 (its default) — no credentials in the game.
+#
+# Run with: INGEST_TOKEN=<your token>  (see collector/run.sh)
+extensions:
+  # Adds "Authorization: Bearer <token>" to outgoing requests. Requires TLS on the exporter (https).
+  bearertokenauth:
+    token: ${env:INGEST_TOKEN}
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+
+processors:
+  batch:
+    timeout: 5s
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 128
+
+exporters:
+  # Metrics -> central Prometheus ingest (Caddy /otlp -> Prometheus OTLP receiver).
+  otlphttp/metrics:
+    metrics_endpoint: ${env:EQ_METRICS_ENDPOINT}
+    auth:
+      authenticator: bearertokenauth
+  # Logs -> Ourios (fill in when ready). For now they're just dropped by the debug exporter.
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [bearertokenauth]
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/metrics]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]   # TODO: replace with otlphttp -> Ourios
