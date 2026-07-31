@@ -27,7 +27,7 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'topk(20, sum by (eq_combat_source) (rate(eq_combat_damage_total{eq_combat_direction="outgoing"}[60s])))'
+                  query: 'topk(20, sum by (eq_combat_source) (rate(eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player"}[60s])))'
                   seriesNameFormat: '{{eq_combat_source}}'
 
     dps_by_source:
@@ -46,7 +46,7 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum by (eq_combat_source) (rate(eq_combat_damage_total{eq_combat_direction="outgoing"}[30s]))'
+                  query: 'sum by (eq_combat_source) (rate(eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player"}[30s]))'
                   seriesNameFormat: '{{eq_combat_source}}'
 
     damage_by_type:
@@ -65,7 +65,7 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum by (eq_combat_damage_type) (rate(eq_combat_damage_total{eq_combat_direction="outgoing"}[30s]))'
+                  query: 'sum by (eq_combat_damage_type) (rate(eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player"}[30s]))'
                   seriesNameFormat: '{{eq_combat_damage_type}}'
 
     total_damage:
@@ -84,7 +84,7 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum by (eq_combat_source) (eq_combat_damage_total{eq_combat_direction="outgoing"})'
+                  query: 'sum by (eq_combat_source) (eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player"})'
                   seriesNameFormat: '{{eq_combat_source}}'
 
     attack:
