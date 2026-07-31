@@ -32,6 +32,9 @@ security:
               - "*"
 
   authentication:
+    # Members only: unknown Discord accounts cannot complete login. Users are provisioned by
+    # deploy/tokens.sh (and later the Discord bot) alongside their ingest token.
+    disable_sign_up: true
     providers:
       enable_native: false
       oauth:
