@@ -27,7 +27,7 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'topk(20, sum by (eq_combat_source) (rate(eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player"}[60s])))'
+                  query: 'topk(20, sum by (eq_combat_source) (rate(eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player"}[60s])) > 0)'
                   seriesNameFormat: '{{eq_combat_source}}'
 
     dps_by_source:
@@ -46,7 +46,7 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum by (eq_combat_source) (rate(eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player"}[30s]))'
+                  query: 'sum by (eq_combat_source) (rate(eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player"}[30s])) > 0'
                   seriesNameFormat: '{{eq_combat_source}}'
 
     damage_by_type:
@@ -142,6 +142,46 @@ spec:
                   query: 'sum(rate(eq_combat_damage_total{eq_combat_direction="incoming"}[30s]))'
                   seriesNameFormat: 'damage taken'
 
+    heal_bars:
+      kind: Panel
+      spec:
+        display:
+          name: Healing done (HPS meter)
+        plugin:
+          kind: BarChart
+          spec:
+            calculation: last
+            sort: desc
+            mode: value
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'topk(20, sum by (eq_combat_source) (rate(eq_combat_heal_total{eq_combat_direction="outgoing"}[60s])) > 0)'
+                  seriesNameFormat: '{{eq_combat_source}}'
+
+    heal_over_time:
+      kind: Panel
+      spec:
+        display:
+          name: Healing over time
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'sum by (eq_combat_source) (rate(eq_combat_heal_total{eq_combat_direction="outgoing"}[30s])) > 0'
+                  seriesNameFormat: '{{eq_combat_source}}'
+
+
   layouts:
     - kind: Grid
       spec:
@@ -183,3 +223,13 @@ spec:
             width: 8
             height: 7
             content: { $ref: '#/spec/panels/incoming' }
+          - x: 0
+            y: 32
+            width: 12
+            height: 8
+            content: { $ref: '#/spec/panels/heal_bars' }
+          - x: 12
+            y: 32
+            width: 12
+            height: 8
+            content: { $ref: '#/spec/panels/heal_over_time' }
