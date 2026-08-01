@@ -29,7 +29,7 @@ irm https://raw.githubusercontent.com/jensholdgaard/everquest-observability/main
 powershell -ExecutionPolicy Bypass -File .\\install.ps1
 ```
 Paste the token when asked, then in game: `/otlp on`
-Dashboard: {dashboard} (log in with Discord — your access is already set up)
+Dashboard: {dashboard} (log in with Discord — your access is already set up)\nYou also get a personal project to save your own dashboards in; the guild ones stay read-only.
 Lost the token? Ask an officer to `/dpsrevoke` you, then run `/dpstoken` again."""
 
 
@@ -84,7 +84,70 @@ def provision(user: str, perses_role: str = "viewer") -> str:
         f"      name: {user}\n"
     )
     (PROVISION / f"rb-{user}.yaml").write_text(rb)
+    provision_personal_project(user)
     return token
+
+
+DS_SPEC = """  display:
+    name: Prometheus (EverQuest metrics)
+  default: true
+  plugin:
+    kind: PrometheusDatasource
+    spec:
+      proxy:
+        kind: HTTPProxy
+        spec:
+          url: http://127.0.0.1:9090
+          allowedEndpoints:
+            - endpointPattern: /api/v1/labels
+              method: POST
+            - endpointPattern: /api/v1/series
+              method: POST
+            - endpointPattern: /api/v1/metadata
+              method: GET
+            - endpointPattern: /api/v1/query
+              method: POST
+            - endpointPattern: /api/v1/query_range
+              method: POST
+            - endpointPattern: /api/v1/label/([a-zA-Z0-9_-]+)/values
+              method: GET
+"""
+
+
+def provision_personal_project(user: str) -> None:
+    """Give the member a project of their own, so they can build and save dashboards without
+    being able to modify the shared ones (Perses permissions are per project, not per dashboard)."""
+    proj = f"u-{user}"
+    (PROVISION / f"50-project-{user}.yaml").write_text(
+        "apiVersion: perses.dev/v1alpha1\n"
+        "kind: Project\n"
+        "metadata:\n"
+        f"  name: {proj}\n"
+        "spec:\n"
+        "  display:\n"
+        f"    name: \"{user} (personal)\"\n"
+    )
+    # Its own datasource copy, so no global datasource permissions are needed anywhere.
+    (PROVISION / f"51-ds-{user}.yaml").write_text(
+        "apiVersion: perses.dev/v1alpha1\n"
+        "kind: Datasource\n"
+        "metadata:\n"
+        "  name: prometheus\n"
+        f"  project: {proj}\n"
+        "spec:\n" + DS_SPEC
+    )
+    (PROVISION / f"52-rb-own-{user}.yaml").write_text(
+        "apiVersion: perses.dev/v1alpha1\n"
+        "kind: RoleBinding\n"
+        "metadata:\n"
+        f"  name: owner-{user}\n"
+        f"  project: {proj}\n"
+        "spec:\n"
+        "  role: owner\n"
+        "  subjects:\n"
+        "    - kind: User\n"
+        f"      name: {user}\n"
+    )
 
 
 def provision_role_only(user: str, perses_role: str) -> None:
@@ -109,6 +172,8 @@ def deprovision(user: str) -> None:
         TOKENS.write_text("\n".join(kept) + ("\n" if kept else ""))
     (PROVISION / f"rb-{user}.yaml").unlink(missing_ok=True)
     (PROVISION / f"user-{user}.yaml").unlink(missing_ok=True)  # legacy
+    for f in (f"50-project-{user}.yaml", f"51-ds-{user}.yaml", f"52-rb-own-{user}.yaml"):
+        (PROVISION / f).unlink(missing_ok=True)
 
 
 class Bot(discord.Client):
@@ -150,6 +215,7 @@ async def dpstoken(interaction: discord.Interaction):
     if has_token(user):
         # Refresh their dashboard role in case their Discord rank changed, then stop.
         provision_role_only(user, perses_role)
+        provision_personal_project(user)
         return await interaction.response.send_message(
             f"You already have a token — refreshed your dashboard access to `{perses_role}`. "
             "Lost the token? Ask an officer to `/dpsrevoke` you first.", ephemeral=True)

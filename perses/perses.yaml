@@ -10,6 +10,9 @@ database:
 
 # Load provisioned resources (the Prometheus GlobalDatasource) at startup.
 provisioning:
+  # NOTE: no enable_watch — that field does not exist in Perses 0.54.0 (it is rejected at startup).
+  # Provisioning is re-read on the interval below, so new members apply without a restart.
+  interval: 2m
   folders:
     - /etc/perses/provisioning
 

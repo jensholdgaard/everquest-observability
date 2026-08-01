@@ -70,8 +70,16 @@ enforced with **RoleBindings** instead:
 
 - `disable_sign_up: false` — logging in with Discord creates the account, and nothing else.
 - No `guest_permissions` — a logged-in stranger sees **no projects and no dashboards**.
-- `/dpstoken` (or `deploy/tokens.sh add`) provisions a **RoleBinding** granting the project's
-  `viewer` role. That is what actually opens the dashboard.
+- `/dpstoken` (or `deploy/tokens.sh add`) provisions a **RoleBinding** granting a role in the
+  shared `everquest` project, mapped from the member's Discord rank (`bot/roles.yaml`):
+  officers → `editor`, ranks → `viewer`, no rank → no access. Re-run it after a promotion.
+
+### Personal dashboards
+
+Perses permissions are per *project*, not per dashboard, so each member also gets their own
+project `u-<username>` where they are `owner`. They can build and save whatever they like there,
+while the shared `everquest` dashboards stay read-only to them. Each personal project carries its
+own datasource copy, so no global datasource permissions are needed anywhere.
 
 Anyone who logged in before this was in place needs to run `/dpstoken` once to regain access.
 
