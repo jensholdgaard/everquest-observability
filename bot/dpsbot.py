@@ -14,6 +14,7 @@ import discord
 from discord import app_commands
 
 TOKENS = pathlib.Path("/etc/eq-otel/tokens.txt")
+ROLE_MAP = pathlib.Path("/etc/eq-otel/roles.yaml")
 PROVISION = pathlib.Path("/etc/perses/provisioning")
 DASHBOARD = "https://dps.nocturnal-guild.de"
 NAME_RE = re.compile(r"^[a-z0-9._]{2,32}$")  # post-2023 Discord usernames
@@ -32,13 +33,36 @@ Dashboard: {dashboard} (log in with Discord — your access is already set up)
 Lost the token? Ask an officer to `/dpsrevoke` you, then run `/dpstoken` again."""
 
 
+def role_for(member) -> str | None:
+    """Highest Perses role the member's Discord roles grant, or None if they hold no guild rank.
+    The mapping lives in roles.yaml and is re-read each time so officers can edit it live."""
+    mapping, current = {}, None
+    try:
+        for line in ROLE_MAP.read_text().splitlines():
+            line = line.split("#")[0].rstrip()
+            if not line:
+                continue
+            if not line.startswith(" ") and line.endswith(":"):
+                current = line[:-1].strip()
+                mapping[current] = []
+            elif line.lstrip().startswith("- ") and current:
+                mapping[current].append(line.lstrip()[2:].strip())
+    except OSError:
+        mapping = {"viewer": []}
+    held = {r.name for r in getattr(member, "roles", [])}
+    for perses_role in ("editor", "viewer"):  # highest first
+        if held & set(mapping.get(perses_role, [])):
+            return perses_role
+    return None
+
+
 def has_token(user: str) -> bool:
     if not TOKENS.exists():
         return False
     return any(line.strip().endswith(f"# {user}") for line in TOKENS.read_text().splitlines())
 
 
-def provision(user: str) -> str:
+def provision(user: str, perses_role: str = "viewer") -> str:
     """Grant a member: append their ingest token and provision the Perses user. The bot runs
     unprivileged; root-owned systemd .path units watch these files and restart the services."""
     token = secrets.token_hex(24)
@@ -51,16 +75,32 @@ def provision(user: str) -> str:
         "apiVersion: perses.dev/v1alpha1\n"
         "kind: RoleBinding\n"
         "metadata:\n"
-        f"  name: viewer-{user}\n"
+        f"  name: {perses_role}-{user}\n"
         "  project: everquest\n"
         "spec:\n"
-        "  role: viewer\n"
+        f"  role: {perses_role}\n"
         "  subjects:\n"
         "    - kind: User\n"
         f"      name: {user}\n"
     )
     (PROVISION / f"rb-{user}.yaml").write_text(rb)
     return token
+
+
+def provision_role_only(user: str, perses_role: str) -> None:
+    """Rewrite just the RoleBinding, e.g. after a Discord rank change."""
+    (PROVISION / f"rb-{user}.yaml").write_text(
+        "apiVersion: perses.dev/v1alpha1\n"
+        "kind: RoleBinding\n"
+        "metadata:\n"
+        f"  name: {perses_role}-{user}\n"
+        "  project: everquest\n"
+        "spec:\n"
+        f"  role: {perses_role}\n"
+        "  subjects:\n"
+        "    - kind: User\n"
+        f"      name: {user}\n"
+    )
 
 
 def deprovision(user: str) -> None:
@@ -102,10 +142,18 @@ async def dpstoken(interaction: discord.Interaction):
     user = interaction.user.name
     if not NAME_RE.match(user):
         return await interaction.response.send_message("Sorry, can't handle that username.", ephemeral=True)
-    if has_token(user):
+    perses_role = role_for(interaction.user)
+    if perses_role is None:
         return await interaction.response.send_message(
-            "You already have a token. Lost it? Ask an officer to `/dpsrevoke` you first.", ephemeral=True)
-    token = provision(user)
+            "You need a guild rank (Trial/Recruit/Member/Raider or officer) for dashboard access. "
+            "Ask an officer if you think this is wrong.", ephemeral=True)
+    if has_token(user):
+        # Refresh their dashboard role in case their Discord rank changed, then stop.
+        provision_role_only(user, perses_role)
+        return await interaction.response.send_message(
+            f"You already have a token — refreshed your dashboard access to `{perses_role}`. "
+            "Lost the token? Ask an officer to `/dpsrevoke` you first.", ephemeral=True)
+    token = provision(user, perses_role)
     msg = DM_TEMPLATE.format(token=token, dashboard=DASHBOARD)
     try:
         await interaction.user.send(msg)

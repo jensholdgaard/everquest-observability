@@ -1,9 +1,10 @@
 # Jaeger holds the fight/zone spans. Proxied through Perses (same-origin) so the browser never
 # talks to Jaeger directly — Jaeger itself stays bound to localhost on the VM.
 apiVersion: perses.dev/v1alpha1
-kind: GlobalDatasource
+kind: Datasource
 metadata:
   name: jaeger
+  project: everquest
 spec:
   display:
     name: Jaeger (EverQuest fights)

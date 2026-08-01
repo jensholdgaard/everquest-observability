@@ -1,0 +1,18 @@
+# Maps Discord guild roles to Perses roles for the EverQuest dashboards.
+# Re-read on every command, so edits take effect without restarting the bot.
+# A member with none of these roles gets no access at all.
+#
+# Perses roles (auto-created in the 'everquest' project):
+#   editor — view + create/modify dashboards
+#   viewer — read only
+# Highest match wins, in the order listed here.
+editor:
+  - admin
+  - Guild Leader
+  - Officer
+  - Dev
+viewer:
+  - Raider
+  - Member
+  - Recruit
+  - Trial

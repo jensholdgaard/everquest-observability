@@ -1,9 +1,10 @@
 # Default Perses datasource: the on-box Prometheus. Uses an HTTPProxy so the BROWSER queries Perses
 # (same origin) and Perses forwards to Prometheus on the server's localhost — not the user's machine.
 apiVersion: perses.dev/v1alpha1
-kind: GlobalDatasource
+kind: Datasource
 metadata:
   name: prometheus
+  project: everquest
 spec:
   display:
     name: Prometheus (EverQuest metrics)
