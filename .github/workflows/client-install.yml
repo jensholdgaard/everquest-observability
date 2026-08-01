@@ -76,6 +76,38 @@ jobs:
           if ($r.StatusCode -ne 200) { throw "collector rejected the payload: $($r.StatusCode)" }
           Write-Host "collector accepted an OTLP/HTTP JSON metrics payload (200)."
 
+      - name: Install Zeal.asi into a (fake) EverQuest folder
+        shell: pwsh
+        run: |
+          # This is the step that writes into a member's game folder, so it gets covered too:
+          # an existing Zeal.asi must be backed up, and what lands must be a real 32-bit PE image.
+          $eq = Join-Path $env:RUNNER_TEMP 'EverQuest'
+          New-Item -ItemType Directory -Force -Path $eq | Out-Null
+          Set-Content -Path (Join-Path $eq 'eqgame.exe') -Value 'stand-in for the game'
+          Set-Content -Path (Join-Path $eq 'Zeal.asi')   -Value 'stand-in for the previous Zeal'
+          ./client/windows/install.ps1 -Token ci-dummy-token -EqDir $eq `
+            -Endpoint http://127.0.0.1:9/v1/metrics -TracesEndpoint http://127.0.0.1:9/v1/traces
+          if (-not (Get-ChildItem $eq -Filter 'Zeal.asi.bak-*')) {
+            throw "the existing Zeal.asi was not backed up"
+          }
+          $bytes = [System.IO.File]::ReadAllBytes((Join-Path $eq 'Zeal.asi'))
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "installed Zeal.asi is not a PE image" }
+          if ($bytes.Length -lt 1MB) { throw "installed Zeal.asi looks truncated ($($bytes.Length) bytes)" }
+          Write-Host "Zeal.asi installed ($([math]::Round($bytes.Length/1MB,1)) MB PE image), old one backed up."
+
+      - name: Reject a folder that is not EverQuest
+        shell: pwsh
+        run: |
+          $bogus = Join-Path $env:RUNNER_TEMP 'NotEverQuest'
+          New-Item -ItemType Directory -Force -Path $bogus | Out-Null
+          try {
+            ./client/windows/install.ps1 -Token ci-dummy-token -EqDir $bogus
+            throw "installer accepted a folder with no eqgame.exe"
+          } catch {
+            if ($_.Exception.Message -notlike "*eqgame.exe*") { throw }
+            Write-Host "refused a non-EverQuest folder, as it should."
+          }
+
       - name: Re-run install (must be idempotent)
         shell: pwsh
         run: ./client/windows/install.ps1 -Token ci-dummy-token-2 -NoZeal
