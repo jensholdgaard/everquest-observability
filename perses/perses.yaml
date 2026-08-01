@@ -21,20 +21,14 @@ security:
     same_site: lax
     secure: ${PERSES_COOKIE_SECURE} # true behind HTTPS (prod), false for http://localhost testing
 
-  # Every logged-in Discord user can VIEW all dashboards (a shared guild meter). No write access.
-  authorization:
-    provider:
-      native:
-        guest_permissions:
-          - actions:
-              - read
-            scopes:
-              - "*"
+  # No blanket guest access: a logged-in stranger sees nothing. Members get the project's 'viewer'
+  # role via a RoleBinding (see deploy/tokens.sh and bot/dpsbot.py).
 
   authentication:
-    # Members only: unknown Discord accounts cannot complete login. Users are provisioned by
-    # deploy/tokens.sh (and later the Discord bot) alongside their ingest token.
-    disable_sign_up: true
+    # Sign-up must stay open: this Perses version cannot provision an OAuth-only user (it demands a
+    # native password, and adding one breaks the Discord login sync). Logging in creates the account
+    # but grants nothing — access comes from a RoleBinding, provisioned per member by the bot.
+    disable_sign_up: false
     providers:
       enable_native: false
       oauth:

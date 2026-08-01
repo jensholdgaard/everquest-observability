@@ -44,20 +44,22 @@ def provision(user: str) -> str:
     token = secrets.token_hex(24)
     with TOKENS.open("a") as f:
         f.write(f"{token} # {user}\n")
-    # Perses rejects a provisioned user without a native password even when native login is
-    # disabled, so give it an unusable random one — members always sign in through Discord.
-    (PROVISION / f"user-{user}.yaml").write_text(
+    # Grant dashboard access. This Perses version cannot provision an OAuth-only User (it demands a
+    # native password, and adding one breaks the Discord login sync), but a RoleBinding provisions
+    # fine: logging in creates the account, this gives it the project's viewer role.
+    rb = (
         "apiVersion: perses.dev/v1alpha1\n"
-        "kind: User\n"
+        "kind: RoleBinding\n"
         "metadata:\n"
-        f"  name: {user}\n"
+        f"  name: viewer-{user}\n"
+        "  project: everquest\n"
         "spec:\n"
-        "  nativeProvider:\n"
-        f"    password: \"{secrets.token_hex(16)}\"\n"
-        "  oauthProviders:\n"
-        "    - issuer: discord.com\n"
-        f"      subject: {user}\n"
+        "  role: viewer\n"
+        "  subjects:\n"
+        "    - kind: User\n"
+        f"      name: {user}\n"
     )
+    (PROVISION / f"rb-{user}.yaml").write_text(rb)
     return token
 
 
@@ -65,7 +67,8 @@ def deprovision(user: str) -> None:
     if TOKENS.exists():
         kept = [l for l in TOKENS.read_text().splitlines() if not l.strip().endswith(f"# {user}")]
         TOKENS.write_text("\n".join(kept) + ("\n" if kept else ""))
-    (PROVISION / f"user-{user}.yaml").unlink(missing_ok=True)
+    (PROVISION / f"rb-{user}.yaml").unlink(missing_ok=True)
+    (PROVISION / f"user-{user}.yaml").unlink(missing_ok=True)  # legacy
 
 
 class Bot(discord.Client):

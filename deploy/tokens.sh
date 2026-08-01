@@ -19,14 +19,23 @@ case "$cmd" in
       touch /etc/eq-otel/tokens.txt; chmod 600 /etc/eq-otel/tokens.txt
       if grep -q ' # $member\$' /etc/eq-otel/tokens.txt 2>/dev/null; then echo 'member already has a token (revoke first)'; exit 2; fi
       echo '$token # $member' >> /etc/eq-otel/tokens.txt
-      cat > /etc/perses/provisioning/user-$discord.yaml <<USR
+      cat > /etc/perses/provisioning/rb-$discord.yaml <<RB
+apiVersion: perses.dev/v1alpha1
+kind: RoleBinding
+metadata:
+  name: viewer-$discord
+  project: everquest
+spec:
+  role: viewer
+  subjects:
+    - kind: User
+      name: $discord
+RB
 apiVersion: perses.dev/v1alpha1
 kind: User
 metadata:
   name: $discord
 spec:
-  nativeProvider:
-    password: \"\$(openssl rand -hex 16)\"
   oauthProviders:
     - issuer: discord.com
       subject: $discord
@@ -40,7 +49,7 @@ USR
     [ -n "$member" ] || { echo "usage: tokens.sh revoke <member> [discord_username]"; exit 1; }
     "${SSH[@]}" "grep -v ' # $member\$' /etc/eq-otel/tokens.txt > /tmp/tk.\$\$ || true
       cat /tmp/tk.\$\$ > /etc/eq-otel/tokens.txt; rm -f /tmp/tk.\$\$   # in-place: keep inode/ownership for the bot's mount
-      rm -f /etc/perses/provisioning/user-$discord.yaml /var/lib/perses/data/users/$discord.json
+      rm -f /etc/perses/provisioning/rb-$discord.yaml /var/lib/perses/data/rolebindings/everquest/viewer-$discord.json
       systemctl restart eq-gateway perses"
     echo "Revoked $member (dashboard user $discord removed)."
     ;;

@@ -61,6 +61,20 @@ Flow:
 Because all code here is public, security rests entirely on the Actions secrets and real auth — never
 on the repo being hidden.
 
+## Access model (and a Perses caveat)
+
+Perses **0.54.0 cannot provision an OAuth-only user**: a file with only `oauthProviders` is
+rejected (`password cannot be empty`), and adding a `nativeProvider` password makes the two
+"mutually exclusive" — which breaks the Discord login sync for that user. So membership is
+enforced with **RoleBindings** instead:
+
+- `disable_sign_up: false` — logging in with Discord creates the account, and nothing else.
+- No `guest_permissions` — a logged-in stranger sees **no projects and no dashboards**.
+- `/dpstoken` (or `deploy/tokens.sh add`) provisions a **RoleBinding** granting the project's
+  `viewer` role. That is what actually opens the dashboard.
+
+Anyone who logged in before this was in place needs to run `/dpstoken` once to regain access.
+
 ## Notes / roadmap
 - **Guild gating:** Discord OAuth logs in *any* Discord user. Restricting to guild members is a
   follow-up (`disable_sign_up: true` + provisioning members, or a guild-membership check layer).
