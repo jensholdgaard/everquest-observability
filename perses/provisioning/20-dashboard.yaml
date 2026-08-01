@@ -21,9 +21,9 @@ spec:
         plugin:
           kind: PrometheusLabelValuesVariable
           spec:
-            labelName: eq_zone_name
+            labelName: everquest_zone_name
             matchers:
-              - 'eq_combat_damage_total'
+              - 'everquest_combat_damage_total'
 
   panels:
     dps_bars:
@@ -43,8 +43,8 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'topk(20, sum by (eq_combat_source) (rate(eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player", eq_zone_name=~"$zone"}[60s])) > 0)'
-                  seriesNameFormat: '{{eq_combat_source}}'
+                  query: 'topk(20, sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone"}[60s])) > 0)'
+                  seriesNameFormat: '{{everquest_combat_source}}'
 
     dps_by_source:
       kind: Panel
@@ -62,8 +62,8 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum by (eq_combat_source) (rate(eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player", eq_zone_name=~"$zone"}[30s])) > 0'
-                  seriesNameFormat: '{{eq_combat_source}}'
+                  query: 'sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone"}[30s])) > 0'
+                  seriesNameFormat: '{{everquest_combat_source}}'
 
     damage_by_type:
       kind: Panel
@@ -81,8 +81,8 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum by (eq_combat_damage_type) (rate(eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player", eq_zone_name=~"$zone"}[30s]))'
-                  seriesNameFormat: '{{eq_combat_damage_type}}'
+                  query: 'sum by (everquest_combat_damage_type) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone"}[30s]))'
+                  seriesNameFormat: '{{everquest_combat_damage_type}}'
 
     total_damage:
       kind: Panel
@@ -100,8 +100,8 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum by (eq_combat_source) (eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player", eq_zone_name=~"$zone"})'
-                  seriesNameFormat: '{{eq_combat_source}}'
+                  query: 'sum by (everquest_combat_source) (everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone"})'
+                  seriesNameFormat: '{{everquest_combat_source}}'
 
     attack:
       kind: Panel
@@ -119,7 +119,7 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'eq_character_attack_ratio{eq_zone_name=~"$zone"}'
+                  query: 'everquest_character_attack_ratio{everquest_zone_name=~"$zone"}'
                   seriesNameFormat: '{{service_instance_id}}'
 
     haste:
@@ -138,7 +138,7 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'eq_character_haste_percent{eq_zone_name=~"$zone"}'
+                  query: 'everquest_character_haste_percent{everquest_zone_name=~"$zone"}'
                   seriesNameFormat: '{{service_instance_id}}'
 
     incoming:
@@ -155,7 +155,7 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum(rate(eq_combat_damage_total{eq_combat_direction="incoming", eq_zone_name=~"$zone"}[30s]))'
+                  query: 'sum(rate(everquest_combat_damage_total{everquest_combat_direction="incoming", everquest_zone_name=~"$zone"}[30s]))'
                   seriesNameFormat: 'damage taken'
 
     heal_bars:
@@ -175,8 +175,8 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'topk(20, sum by (eq_combat_source) (rate(eq_combat_heal_total{eq_combat_direction="outgoing", eq_zone_name=~"$zone"}[60s])) > 0)'
-                  seriesNameFormat: '{{eq_combat_source}}'
+                  query: 'topk(20, sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="outgoing", everquest_zone_name=~"$zone"}[60s])) > 0)'
+                  seriesNameFormat: '{{everquest_combat_source}}'
 
     heal_over_time:
       kind: Panel
@@ -194,8 +194,8 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum by (eq_combat_source) (rate(eq_combat_heal_total{eq_combat_direction="outgoing", eq_zone_name=~"$zone"}[30s])) > 0'
-                  seriesNameFormat: '{{eq_combat_source}}'
+                  query: 'sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="outgoing", everquest_zone_name=~"$zone"}[30s])) > 0'
+                  seriesNameFormat: '{{everquest_combat_source}}'
 
 
     damage_by_target:
@@ -215,8 +215,8 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'topk(15, sum by (eq_combat_target) (rate(eq_combat_damage_total{eq_combat_direction="outgoing", eq_combat_source_type="player", eq_zone_name=~"$zone"}[60s])) > 0)'
-                  seriesNameFormat: '{{eq_combat_target}}'
+                  query: 'topk(15, sum by (everquest_combat_target) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone"}[60s])) > 0)'
+                  seriesNameFormat: '{{everquest_combat_target}}'
 
 
   layouts:
