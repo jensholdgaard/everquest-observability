@@ -1,0 +1,57 @@
+# Jaeger v2 as a plain OTLP trace backend for the fight/zone spans Zeal emits.
+# Everything binds to localhost: the gateway collector forwards traces in, Perses queries them out
+# through its own proxy, and the Jaeger UI is reachable only over an SSH tunnel (no public surface,
+# so no second thing to put behind Discord SSO).
+service:
+  extensions: [jaeger_storage, jaeger_query]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [jaeger_storage_exporter]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      # Default is :8888, which the gateway collector already owns.
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: 18888
+
+extensions:
+  jaeger_query:
+    storage:
+      traces: main_store
+    http:
+      endpoint: 127.0.0.1:16686 # UI + query API (localhost only — use an SSH tunnel)
+    grpc:
+      endpoint: 127.0.0.1:16685
+
+  jaeger_storage:
+    backends:
+      main_store:
+        badger:
+          directories:
+            keys: /var/lib/jaeger/keys
+            values: /var/lib/jaeger/values
+          ephemeral: false
+          ttl:
+            spans: 72h # fights are only interesting while the raid is fresh; keeps disk bounded
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:14317
+      http:
+        endpoint: 127.0.0.1:14318
+
+processors:
+  batch: {}
+
+exporters:
+  jaeger_storage_exporter:
+    trace_storage: main_store

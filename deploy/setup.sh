@@ -108,6 +108,41 @@ RestartSec=3
 WantedBy=multi-user.target
 UNIT
 
+
+# --- Jaeger (OTLP trace backend for fight/zone spans) ------------------------
+JAEGER_VERSION="2.20.0"
+if [ ! -x /usr/local/bin/jaeger ]; then
+  tmp="$(mktemp -d)"
+  curl -fsSL "https://github.com/jaegertracing/jaeger/releases/download/v${JAEGER_VERSION}/jaeger-${JAEGER_VERSION}-linux-amd64.tar.gz" -o "$tmp/j.tgz"
+  tar xzf "$tmp/j.tgz" -C "$tmp"
+  install -m 0755 "$tmp"/jaeger-*/jaeger /usr/local/bin/jaeger
+  rm -rf "$tmp"
+fi
+id -u jaeger >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin jaeger
+mkdir -p /etc/jaeger /var/lib/jaeger
+cp -f "$REPO_DIR/jaeger/config.yaml" /etc/jaeger/config.yaml
+chown root:jaeger /etc/jaeger/config.yaml; chmod 640 /etc/jaeger/config.yaml
+chown -R jaeger:jaeger /var/lib/jaeger
+cat > /etc/systemd/system/jaeger.service <<'UNIT'
+[Unit]
+Description=Jaeger (OTLP trace backend)
+After=network-online.target
+Wants=network-online.target
+[Service]
+User=jaeger
+Group=jaeger
+ExecStart=/usr/local/bin/jaeger --config /etc/jaeger/config.yaml
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/jaeger
+[Install]
+WantedBy=multi-user.target
+UNIT
+
 # --- Render configs ---------------------------------------------------------
 mkdir -p /etc/perses
 envsubst < "$REPO_DIR/perses/perses.yaml" > /etc/perses/perses.yaml
@@ -159,6 +194,8 @@ yes | ufw enable   >/dev/null 2>&1 || true
 systemctl daemon-reload
 systemctl enable --now prometheus
 systemctl restart prometheus
+systemctl enable --now jaeger
+systemctl restart jaeger
 systemctl enable --now eq-gateway
 systemctl restart eq-gateway
 systemctl enable --now perses

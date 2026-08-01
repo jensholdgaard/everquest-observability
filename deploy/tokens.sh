@@ -25,6 +25,8 @@ kind: User
 metadata:
   name: $discord
 spec:
+  nativeProvider:
+    password: \"\$(openssl rand -hex 16)\"
   oauthProviders:
     - issuer: discord.com
       subject: $discord

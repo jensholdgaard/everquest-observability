@@ -1,0 +1,64 @@
+apiVersion: perses.dev/v1alpha1
+kind: Dashboard
+metadata:
+  name: eq-fights
+  project: everquest
+spec:
+  display:
+    name: EverQuest Fights
+  duration: 3h
+  refreshInterval: 30s
+
+  panels:
+    fights_table:
+      kind: Panel
+      spec:
+        display:
+          name: Recent fights (click a row for the timeline)
+          description: >
+            Each fight is a span opened on first damage and closed by a kill message, 30s of
+            inactivity, or zoning. Nested under the zone session it happened in.
+        plugin:
+          kind: TraceTable
+          spec: {}
+        queries:
+          - kind: TraceQuery
+            spec:
+              plugin:
+                kind: JaegerTraceQuery
+                spec:
+                  datasource:
+                    kind: JaegerDatasource
+                    name: jaeger
+                  service: everquest
+                  limit: 50
+
+    fight_gantt:
+      kind: Panel
+      spec:
+        display:
+          name: Fight timeline
+          description: Gantt view of the selected trace — zone session with its fights nested inside.
+        plugin:
+          kind: TracingGanttChart
+          spec: {}
+        queries:
+          - kind: TraceQuery
+            spec:
+              plugin:
+                kind: JaegerTraceQuery
+                spec:
+                  datasource:
+                    kind: JaegerDatasource
+                    name: jaeger
+                  service: everquest
+                  limit: 50
+
+  layouts:
+    - kind: Grid
+      spec:
+        display:
+          title: Fights
+        items:
+          - {x: 0, y: 0, width: 24, height: 12, content: {$ref: '#/spec/panels/fights_table'}}
+          - {x: 0, y: 12, width: 24, height: 12, content: {$ref: '#/spec/panels/fight_gantt'}}

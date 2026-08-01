@@ -26,6 +26,9 @@ exporters:
   # Metrics -> on-box Prometheus OTLP receiver.
   otlphttp/prometheus:
     metrics_endpoint: http://127.0.0.1:9090/api/v1/otlp/v1/metrics
+  # Traces -> on-box Jaeger (Badger storage, 72h). Queried from Perses; UI is localhost-only.
+  otlphttp/jaeger:
+    traces_endpoint: http://127.0.0.1:14318/v1/traces
   # Logs are not stored. Clients don't forward them (chat contains private conversation); this
   # pipeline exists only so a stray log post gets a clean 200 instead of an error.
   debug:
@@ -41,7 +44,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [debug]   # TODO: Tempo (or another trace store) for per-fight views
+      exporters: [otlphttp/jaeger]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]

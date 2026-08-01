@@ -44,12 +44,16 @@ def provision(user: str) -> str:
     token = secrets.token_hex(24)
     with TOKENS.open("a") as f:
         f.write(f"{token} # {user}\n")
+    # Perses rejects a provisioned user without a native password even when native login is
+    # disabled, so give it an unusable random one — members always sign in through Discord.
     (PROVISION / f"user-{user}.yaml").write_text(
         "apiVersion: perses.dev/v1alpha1\n"
         "kind: User\n"
         "metadata:\n"
         f"  name: {user}\n"
         "spec:\n"
+        "  nativeProvider:\n"
+        f"    password: \"{secrets.token_hex(16)}\"\n"
         "  oauthProviders:\n"
         "    - issuer: discord.com\n"
         f"      subject: {user}\n"

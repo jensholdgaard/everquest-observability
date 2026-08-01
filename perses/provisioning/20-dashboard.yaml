@@ -187,6 +187,7 @@ spec:
         plugin:
           kind: PieChart
           spec:
+            radius: 70
             calculation: sum
             format:
               unit: decimal
