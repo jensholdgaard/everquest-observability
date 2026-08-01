@@ -130,6 +130,18 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Windows PowerShell 5.1 reads a BOM-less .ps1 as Windows-1252, so any non-ASCII byte in the
+      # file (an em dash in a comment is enough) turns into mojibake and the parse fails outright.
+      # The irm one-liner is decoded as UTF-8 by the HTTP layer and survives, which is exactly why
+      # this only bites members who save the file and run it with -File.
+      - name: install.ps1 must be pure ASCII
+        shell: pwsh
+        run: |
+          $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path ./client/windows/install.ps1))
+          $bad = $bytes | Where-Object { $_ -gt 127 }
+          if ($bad) { throw "install.ps1 contains $($bad.Count) non-ASCII byte(s) - PS 5.1 will fail to parse it" }
+          Write-Host "install.ps1 is pure ASCII."
+
       - name: Install under Windows PowerShell 5.1
         shell: powershell
         run: |

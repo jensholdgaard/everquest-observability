@@ -1,9 +1,9 @@
-# EverQuest guild telemetry — Windows client installer.
+# EverQuest guild telemetry - Windows client installer.
 # Installs the local OTel collector (forwards Zeal's metrics to the guild server with your token),
 # registers it to start at logon, and (optionally) installs the custom Zeal.asi into your EQ folder.
 #
 # Usage (PowerShell, no admin needed):
-#   # one-liner from the Discord DM — nothing saved to disk, no execution-policy flag:
+#   # one-liner from the Discord DM - nothing saved to disk, no execution-policy flag:
 #   & ([scriptblock]::Create((irm <raw-url>))) -Token abc123
 #
 #   .\install.ps1                              # interactive: prompts for the token, finds EQ itself
@@ -94,14 +94,14 @@ if ($Uninstall) {
   Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
   if (Test-Path $Dir) { Remove-Item -Recurse -Force $Dir }
   Write-Host "Removed the collector, its config (token included) and the logon task." -ForegroundColor Green
-  Write-Host "Zeal.asi was left alone — restore a Zeal.asi.bak-* in your EQ folder for stock Zeal."
+  Write-Host "Zeal.asi was left alone - restore a Zeal.asi.bak-* in your EQ folder for stock Zeal."
   return
 }
 
 Write-Host "== EverQuest guild telemetry installer ==" -ForegroundColor Cyan
 
 if (-not $Token) { $Token = Read-Host "Paste your guild ingest token" }
-if (-not $Token) { throw "A token is required — run /dpstoken in the guild Discord to get one." }
+if (-not $Token) { throw "A token is required - run /dpstoken in the guild Discord to get one." }
 
 New-Item -ItemType Directory -Force -Path $Dir | Out-Null
 
@@ -122,7 +122,7 @@ if (-not (Test-Path $Exe)) {
       -Uri "$base/opentelemetry-collector-releases_otelcol-contrib_windows_checksums.txt"
   $line = Get-Content $sumsFile | Where-Object { $_ -match ([regex]::Escape($tgzName) + '\s*$') } | Select-Object -First 1
   Remove-Item $sumsFile -Force
-  if (-not $line) { throw "No published checksum for $tgzName — refusing to install." }
+  if (-not $line) { throw "No published checksum for $tgzName - refusing to install." }
   $expected = (($line -split '\s+') | Select-Object -First 1).ToUpper()
 
   Invoke-WebRequest -UseBasicParsing -Uri "$base/$tgzName" -OutFile $tgz
@@ -184,7 +184,7 @@ service:
       exporters: [debug]
 "@
 # Written as UTF-8 *without* a BOM: `Set-Content -Encoding UTF8` emits a BOM under Windows
-# PowerShell 5.1 — which is what members actually have — and Go's YAML parser chokes on it. PS 7
+# PowerShell 5.1 - which is what members actually have - and Go's YAML parser chokes on it. PS 7
 # writes no BOM, so this never reproduced for us or in CI until CI grew a 5.1 job. (Zigzap.)
 [System.IO.File]::WriteAllText($Cfg, $yaml, (New-Object System.Text.UTF8Encoding($false)))
 
@@ -194,7 +194,7 @@ $validation = & $Exe validate --config $Cfg 2>&1
 if ($LASTEXITCODE -ne 0) { throw "The collector rejected the config:`n$validation" }
 
 # --- 3. Start it ------------------------------------------------------------
-# A hidden task that runs at logon is indistinguishable, from the outside, from what malware does —
+# A hidden task that runs at logon is indistinguishable, from the outside, from what malware does -
 # a reasonable thing to refuse on someone else's machine. -NoAutostart writes a launcher instead, so
 # the collector only ever runs when you double-click it. (Zigzap.)
 if ($NoAutostart) {
@@ -239,7 +239,7 @@ if (-not $NoZeal) {
   if ($EqDir) {
     if (-not (Test-Path $EqDir)) { throw "Folder not found: $EqDir" }
     if (-not (Test-Path (Join-Path $EqDir 'eqgame.exe'))) {
-      throw "$EqDir does not contain eqgame.exe — that is not the EverQuest folder."
+      throw "$EqDir does not contain eqgame.exe - that is not the EverQuest folder."
     }
     $asi = Join-Path $EqDir "Zeal.asi"
     if (Test-Path $asi) {
