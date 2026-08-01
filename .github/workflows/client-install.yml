@@ -121,3 +121,71 @@ jobs:
             throw "logon task survived uninstall"
           }
           Write-Host "uninstall is clean."
+
+  # Members run Windows PowerShell 5.1 (what "powershell" opens), not pwsh 7. The two differ in ways
+  # that break this script — 5.1's Set-Content -Encoding UTF8 writes a BOM that Go's YAML parser
+  # rejects — and a pwsh-only matrix cannot see any of it.
+  smoke-ps51:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          .\client\windows\install.ps1 -Token ci-dummy-token -NoZeal `
+            -Endpoint http://127.0.0.1:9/v1/metrics -TracesEndpoint http://127.0.0.1:9/v1/traces
+
+      - name: config.yaml must have no UTF-8 BOM
+        shell: powershell
+        run: |
+          $cfg = Join-Path $env:LOCALAPPDATA 'eq-otel\config.yaml'
+          $bytes = [System.IO.File]::ReadAllBytes($cfg)
+          if ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+            throw "config.yaml starts with a UTF-8 BOM — the collector will reject it"
+          }
+          Write-Host "config.yaml is BOM-free under PS 5.1."
+
+      - name: Collector accepts a payload, then uninstall
+        shell: powershell
+        run: |
+          $c = New-Object System.Net.Sockets.TcpClient
+          $c.Connect('127.0.0.1', 4318); $c.Close()
+          .\client\windows\install.ps1 -Uninstall
+          if (Test-Path (Join-Path $env:LOCALAPPDATA 'eq-otel')) { throw "install dir survived uninstall" }
+          Write-Host "PS 5.1 install/uninstall cycle is clean."
+
+  # The no-autostart path: no scheduled task at all, a launcher you start yourself.
+  smoke-noautostart:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install without autostart
+        shell: pwsh
+        run: |
+          ./client/windows/install.ps1 -Token ci-dummy-token -NoZeal -NoAutostart `
+            -Endpoint http://127.0.0.1:9/v1/metrics -TracesEndpoint http://127.0.0.1:9/v1/traces
+          $dir = Join-Path $env:LOCALAPPDATA 'eq-otel'
+          if (-not (Test-Path (Join-Path $dir 'run-otelcol.bat'))) { throw "launcher not written" }
+          if (Get-ScheduledTask -TaskName EQ-OTel-Collector -ErrorAction SilentlyContinue) {
+            throw "-NoAutostart still registered a scheduled task"
+          }
+          if (Get-Process otelcol-contrib -ErrorAction SilentlyContinue) {
+            throw "-NoAutostart started the collector anyway"
+          }
+          Write-Host "no task, no running process, launcher present."
+
+      - name: The launcher actually starts the collector
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'eq-otel'
+          Start-Process -FilePath (Join-Path $dir 'run-otelcol.bat') -WindowStyle Hidden
+          $ok = $false
+          foreach ($i in 1..25) {
+            try { $c = New-Object System.Net.Sockets.TcpClient; $c.Connect('127.0.0.1', 4318); $c.Close(); $ok = $true; break }
+            catch { Start-Sleep -Milliseconds 500 }
+          }
+          if (-not $ok) { throw "run-otelcol.bat did not bring the collector up" }
+          Write-Host "run-otelcol.bat works."
+          ./client/windows/install.ps1 -Uninstall

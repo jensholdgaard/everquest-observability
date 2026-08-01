@@ -14,12 +14,16 @@ param(
   [string]$Token,
   [string]$EqDir,
   [switch]$NoZeal,
+  [switch]$NoAutostart,
   [switch]$Uninstall,
   [string]$Endpoint = "https://dps.nocturnal-guild.de/otlp/v1/metrics",
   [string]$TracesEndpoint = "https://dps.nocturnal-guild.de/otlp/v1/traces",
   [string]$ZealUrl = "https://github.com/jensholdgaard/NewZeal/releases/download/otlp-preview/Zeal.asi"
 )
 $ErrorActionPreference = "Stop"
+# Windows PowerShell 5.1 renders a progress bar per chunk for Invoke-WebRequest, which dominates the
+# runtime of the ~250 MB collector download. (Zigzap.)
+$ProgressPreference = "SilentlyContinue"
 $Ver = "0.157.0"
 $Dir = Join-Path $env:LOCALAPPDATA "eq-otel"
 $Exe = Join-Path $Dir "otelcol-contrib.exe"
@@ -134,7 +138,7 @@ if (-not (Test-Path $Exe)) {
 
 # --- 2. Config (token embedded; file lives in your user profile) -------------
 Stop-Collector
-@"
+$yaml = @"
 extensions:
   bearertokenauth:
     token: "$Token"
@@ -155,11 +159,16 @@ exporters:
     traces_endpoint: $TracesEndpoint
     auth:
       authenticator: bearertokenauth
+  # 'basic' prints one line per batch; switch to 'detailed' to dump full attribute contents when
+  # auditing what Zeal actually emits. (Zigzap.)
   debug:
     verbosity: basic
 service:
   extensions: [bearertokenauth]
   pipelines:
+    # AUDIT MODE: to see everything locally before any of it leaves your machine, set
+    # verbosity: detailed above and replace [otlphttp/metrics] with [debug] in the two pipelines
+    # below, then run the collector and watch the console.
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
@@ -173,14 +182,36 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [debug]
-"@ | Set-Content -Path $Cfg -Encoding UTF8
+"@
+# Written as UTF-8 *without* a BOM: `Set-Content -Encoding UTF8` emits a BOM under Windows
+# PowerShell 5.1 — which is what members actually have — and Go's YAML parser chokes on it. PS 7
+# writes no BOM, so this never reproduced for us or in CI until CI grew a 5.1 job. (Zigzap.)
+[System.IO.File]::WriteAllText($Cfg, $yaml, (New-Object System.Text.UTF8Encoding($false)))
 
 # Catch a broken config here, with the collector's own error message, rather than leaving behind a
 # scheduled task that silently fails to start.
 $validation = & $Exe validate --config $Cfg 2>&1
 if ($LASTEXITCODE -ne 0) { throw "The collector rejected the config:`n$validation" }
 
-# --- 3. Run at logon (hidden), and start now ---------------------------------
+# --- 3. Start it ------------------------------------------------------------
+# A hidden task that runs at logon is indistinguishable, from the outside, from what malware does —
+# a reasonable thing to refuse on someone else's machine. -NoAutostart writes a launcher instead, so
+# the collector only ever runs when you double-click it. (Zigzap.)
+if ($NoAutostart) {
+  $bat = Join-Path $Dir "run-otelcol.bat"
+  # %~dp0 = the .bat's own folder, so it works from a double-click or a shortcut; `pause` keeps the
+  # window up if the collector exits with an error. ASCII + CRLF is what cmd.exe is happiest with.
+  $batLines = (@(
+    '@echo off'
+    'title EQ OTel Collector'
+    '"%~dp0otelcol-contrib.exe" --config "%~dp0config.yaml"'
+    'pause'
+  ) -join "`r`n") + "`r`n"
+  [System.IO.File]::WriteAllText($bat, $batLines, [System.Text.Encoding]::ASCII)
+  Write-Host "No autostart configured. Start the collector yourself when you want to play:" -ForegroundColor Green
+  Write-Host "  $bat"
+} else {
+
 $Action = New-ScheduledTaskAction -Execute $Exe -Argument "--config `"$Cfg`""
 $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $Settings = New-ScheduledTaskSettingsSet -Hidden -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
@@ -193,6 +224,8 @@ if (Wait-ForPort -Port 4318) {
 } else {
   throw "The collector did not start listening on 127.0.0.1:4318. Check Task Scheduler -> $TaskName."
 }
+
+}  # end of the autostart branch
 
 # --- 4. Optional: install the custom Zeal.asi --------------------------------
 if (-not $NoZeal) {
@@ -238,6 +271,7 @@ if (-not $NoZeal) {
 }
 
 Write-Host ""
+if ($NoAutostart) { Write-Host "Start run-otelcol.bat before you play, then in game:  /otlp on" -ForegroundColor Cyan }
 Write-Host "Done! In game, type:  /otlp on   (persists across sessions)" -ForegroundColor Cyan
 Write-Host "Dashboard: https://dps.nocturnal-guild.de (log in with Discord)"
 Write-Host "To remove it later: rerun this script with -Uninstall"
