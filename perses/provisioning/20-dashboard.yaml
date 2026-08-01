@@ -24,33 +24,147 @@ spec:
             labelName: everquest_zone_name
             matchers:
               - 'everquest_combat_damage_total'
+    - kind: ListVariable
+      spec:
+        name: player
+        display:
+          name: Player
+        allowAllValue: true
+        allowMultiple: true
+        customAllValue: ".+"
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            labelName: everquest_combat_source
+            matchers:
+              - 'everquest_combat_damage_total{everquest_combat_source_type="player"}'
 
   panels:
+    stat_group_dps:
+      kind: Panel
+      spec:
+        display:
+          name: Group DPS
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'sum(rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))'
+
+    stat_top_dps:
+      kind: Panel
+      spec:
+        display:
+          name: Best player DPS
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'max(sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])))'
+
+    stat_hps:
+      kind: Panel
+      spec:
+        display:
+          name: Group HPS
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'sum(rate(everquest_combat_heal_total{everquest_combat_direction="outgoing", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))'
+
+    stat_taken:
+      kind: Panel
+      spec:
+        display:
+          name: Damage taken /s
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'sum(rate(everquest_combat_damage_total{everquest_combat_direction="incoming", everquest_zone_name=~"$zone"}[60s]))'
+
     dps_bars:
       kind: Panel
       spec:
         display:
-          name: DPS meter (by source)
+          name: DPS meter
         plugin:
           kind: BarChart
           spec:
             calculation: last
             sort: desc
             mode: value
+            format:
+              unit: decimal
+              decimalPlaces: 0
         queries:
           - kind: TimeSeriesQuery
             spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'topk(20, sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone"}[60s])) > 0)'
+                  query: 'topk(20, sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])) > 0)'
                   seriesNameFormat: '{{everquest_combat_source}}'
 
-    dps_by_source:
+    dps_table:
       kind: Panel
       spec:
         display:
-          name: DPS history (by source)
+          name: Leaderboard (DPS now / share of group)
+        plugin:
+          kind: TimeSeriesTable
+          spec: {}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'sort_desc(sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])) > 0)'
+                  seriesNameFormat: '{{everquest_combat_source}}'
+
+    dps_history:
+      kind: Panel
+      spec:
+        display:
+          name: DPS history
         plugin:
           kind: TimeSeriesChart
           spec:
@@ -62,33 +176,81 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone"}[30s])) > 0'
+                  query: 'sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[30s])) > 0'
                   seriesNameFormat: '{{everquest_combat_source}}'
 
-    damage_by_type:
+    damage_mix:
       kind: Panel
       spec:
         display:
-          name: DPS by damage type
+          name: Damage mix (by type)
         plugin:
-          kind: TimeSeriesChart
+          kind: PieChart
           spec:
-            legend:
-              position: bottom
+            calculation: sum
+            format:
+              unit: decimal
+              decimalPlaces: 0
         queries:
           - kind: TimeSeriesQuery
             spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum by (everquest_combat_damage_type) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone"}[30s]))'
+                  query: 'sum by (everquest_combat_damage_type) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])) > 0'
                   seriesNameFormat: '{{everquest_combat_damage_type}}'
 
-    total_damage:
+    dps_by_target:
       kind: Panel
       spec:
         display:
-          name: Total damage dealt (cumulative)
+          name: Damage by target
+        plugin:
+          kind: BarChart
+          spec:
+            calculation: last
+            sort: desc
+            mode: value
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'topk(15, sum by (everquest_combat_target) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])) > 0)'
+                  seriesNameFormat: '{{everquest_combat_target}}'
+
+    heal_bars:
+      kind: Panel
+      spec:
+        display:
+          name: Healing meter (HPS)
+        plugin:
+          kind: BarChart
+          spec:
+            calculation: last
+            sort: desc
+            mode: value
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 'topk(20, sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="outgoing", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])) > 0)'
+                  seriesNameFormat: '{{everquest_combat_source}}'
+
+    heal_history:
+      kind: Panel
+      spec:
+        display:
+          name: Healing history
         plugin:
           kind: TimeSeriesChart
           spec:
@@ -100,14 +262,14 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum by (everquest_combat_source) (everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone"})'
+                  query: 'sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="outgoing", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[30s])) > 0'
                   seriesNameFormat: '{{everquest_combat_source}}'
 
     attack:
       kind: Panel
       spec:
         display:
-          name: Attack rating (you)
+          name: Attack rating
         plugin:
           kind: TimeSeriesChart
           spec:
@@ -126,7 +288,7 @@ spec:
       kind: Panel
       spec:
         display:
-          name: Haste % (you)
+          name: Haste %
         plugin:
           kind: TimeSeriesChart
           spec:
@@ -145,44 +307,7 @@ spec:
       kind: Panel
       spec:
         display:
-          name: Damage taken (incoming)
-        plugin:
-          kind: TimeSeriesChart
-          spec: {}
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'sum(rate(everquest_combat_damage_total{everquest_combat_direction="incoming", everquest_zone_name=~"$zone"}[30s]))'
-                  seriesNameFormat: 'damage taken'
-
-    heal_bars:
-      kind: Panel
-      spec:
-        display:
-          name: Healing done (HPS meter)
-        plugin:
-          kind: BarChart
-          spec:
-            calculation: last
-            sort: desc
-            mode: value
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'topk(20, sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="outgoing", everquest_zone_name=~"$zone"}[60s])) > 0)'
-                  seriesNameFormat: '{{everquest_combat_source}}'
-
-    heal_over_time:
-      kind: Panel
-      spec:
-        display:
-          name: Healing history
+          name: Damage taken
         plugin:
           kind: TimeSeriesChart
           spec:
@@ -194,84 +319,41 @@ spec:
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: 'sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="outgoing", everquest_zone_name=~"$zone"}[30s])) > 0'
-                  seriesNameFormat: '{{everquest_combat_source}}'
-
-
-    damage_by_target:
-      kind: Panel
-      spec:
-        display:
-          name: DPS by target (what we're killing)
-        plugin:
-          kind: BarChart
-          spec:
-            calculation: last
-            sort: desc
-            mode: value
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'topk(15, sum by (everquest_combat_target) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_zone_name=~"$zone"}[60s])) > 0)'
-                  seriesNameFormat: '{{everquest_combat_target}}'
-
+                  query: 'sum by (service_instance_id) (rate(everquest_combat_damage_total{everquest_combat_direction="incoming", everquest_zone_name=~"$zone"}[30s])) > 0'
+                  seriesNameFormat: '{{service_instance_id}}'
 
   layouts:
     - kind: Grid
       spec:
         display:
-          title: DPS
+          title: Right now
         items:
-          - x: 0
-            y: 0
-            width: 24
-            height: 10
-            content: { $ref: '#/spec/panels/dps_bars' }
-          - x: 0
-            y: 10
-            width: 24
-            height: 8
-            content: { $ref: '#/spec/panels/dps_by_source' }
-          - x: 0
-            y: 18
-            width: 12
-            height: 7
-            content: { $ref: '#/spec/panels/damage_by_type' }
-          - x: 12
-            y: 18
-            width: 12
-            height: 7
-            content: { $ref: '#/spec/panels/total_damage' }
-          - x: 0
-            y: 25
-            width: 8
-            height: 7
-            content: { $ref: '#/spec/panels/attack' }
-          - x: 8
-            y: 25
-            width: 8
-            height: 7
-            content: { $ref: '#/spec/panels/haste' }
-          - x: 16
-            y: 25
-            width: 8
-            height: 7
-            content: { $ref: '#/spec/panels/incoming' }
-          - x: 0
-            y: 32
-            width: 12
-            height: 8
-            content: { $ref: '#/spec/panels/heal_bars' }
-          - x: 12
-            y: 32
-            width: 12
-            height: 8
-            content: { $ref: '#/spec/panels/heal_over_time' }
-          - x: 0
-            y: 40
-            width: 24
-            height: 8
-            content: { $ref: '#/spec/panels/damage_by_target' }
+          - {x: 0,  y: 0, width: 6, height: 4, content: {$ref: '#/spec/panels/stat_group_dps'}}
+          - {x: 6,  y: 0, width: 6, height: 4, content: {$ref: '#/spec/panels/stat_top_dps'}}
+          - {x: 12, y: 0, width: 6, height: 4, content: {$ref: '#/spec/panels/stat_hps'}}
+          - {x: 18, y: 0, width: 6, height: 4, content: {$ref: '#/spec/panels/stat_taken'}}
+    - kind: Grid
+      spec:
+        display:
+          title: Damage
+        items:
+          - {x: 0,  y: 0, width: 14, height: 9, content: {$ref: '#/spec/panels/dps_bars'}}
+          - {x: 14, y: 0, width: 10, height: 9, content: {$ref: '#/spec/panels/dps_table'}}
+          - {x: 0,  y: 9, width: 16, height: 8, content: {$ref: '#/spec/panels/dps_history'}}
+          - {x: 16, y: 9, width: 8,  height: 8, content: {$ref: '#/spec/panels/damage_mix'}}
+          - {x: 0,  y: 17, width: 24, height: 7, content: {$ref: '#/spec/panels/dps_by_target'}}
+    - kind: Grid
+      spec:
+        display:
+          title: Healing
+        items:
+          - {x: 0,  y: 0, width: 12, height: 8, content: {$ref: '#/spec/panels/heal_bars'}}
+          - {x: 12, y: 0, width: 12, height: 8, content: {$ref: '#/spec/panels/heal_history'}}
+    - kind: Grid
+      spec:
+        display:
+          title: Character
+        items:
+          - {x: 0,  y: 0, width: 8, height: 7, content: {$ref: '#/spec/panels/attack'}}
+          - {x: 8,  y: 0, width: 8, height: 7, content: {$ref: '#/spec/panels/haste'}}
+          - {x: 16, y: 0, width: 8, height: 7, content: {$ref: '#/spec/panels/incoming'}}
