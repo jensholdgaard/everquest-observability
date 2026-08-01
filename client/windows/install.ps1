@@ -110,10 +110,14 @@ if (-not (Test-Path $Exe)) {
   # Verify against the checksum file OpenTelemetry publishes for the release: catches a corrupted
   # or truncated download, and means a swapped binary would have to match a hash published by the
   # upstream project rather than just sit at the download URL.
+  # Downloaded to a file rather than read from .Content: GitHub serves release assets as
+  # application/octet-stream, and PowerShell 7 hands those back as a byte[], not a string.
   Write-Host "Downloading OpenTelemetry Collector v$Ver..."
-  $sums = (Invoke-WebRequest -UseBasicParsing `
-      -Uri "$base/opentelemetry-collector-releases_otelcol-contrib_windows_checksums.txt").Content
-  $line = ($sums -split "`n") | Where-Object { $_ -match ([regex]::Escape($tgzName) + '\s*$') } | Select-Object -First 1
+  $sumsFile = Join-Path $Dir "checksums.txt"
+  Invoke-WebRequest -UseBasicParsing -OutFile $sumsFile `
+      -Uri "$base/opentelemetry-collector-releases_otelcol-contrib_windows_checksums.txt"
+  $line = Get-Content $sumsFile | Where-Object { $_ -match ([regex]::Escape($tgzName) + '\s*$') } | Select-Object -First 1
+  Remove-Item $sumsFile -Force
   if (-not $line) { throw "No published checksum for $tgzName — refusing to install." }
   $expected = (($line -split '\s+') | Select-Object -First 1).ToUpper()
 
@@ -213,8 +217,12 @@ if (-not $NoZeal) {
     $tmpAsi = Join-Path $Dir "Zeal.asi.download"
     Invoke-WebRequest -UseBasicParsing -Uri $ZealUrl -OutFile $tmpAsi
     # Verify if the release publishes a hash next to the binary; skip quietly if it does not.
+    $want = $null
     try {
-      $want = (((Invoke-WebRequest -UseBasicParsing -Uri "$ZealUrl.sha256").Content) -split '\s+')[0]
+      $shaFile = Join-Path $Dir "zeal.sha256"
+      Invoke-WebRequest -UseBasicParsing -Uri "$ZealUrl.sha256" -OutFile $shaFile
+      $want = ((Get-Content $shaFile -Raw) -split '\s+')[0]
+      Remove-Item $shaFile -Force
     } catch { $want = $null }
     if ($want) {
       $got = (Get-FileHash $tmpAsi -Algorithm SHA256).Hash
