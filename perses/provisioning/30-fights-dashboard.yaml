@@ -9,18 +9,36 @@ spec:
   duration: 3h
   refreshInterval: 30s
 
+  # The Gantt panel renders ONE trace, selected by id — the plugin rejects search results outright
+  # ("This panel does not support displaying trace search results"). This variable holds that id;
+  # clicking a row in the fights table fills it in.
+  variables:
+    - kind: TextVariable
+      spec:
+        name: fight
+        display:
+          name: Fight (trace id)
+          description: Click a row in the fights table to fill this in, or paste a trace id.
+        value: ""
+
   panels:
     fights_table:
       kind: Panel
       spec:
         display:
-          name: Recent fights (click a row for the timeline)
+          name: Recent fights (click a row to load its timeline)
           description: >
             Each fight is a span opened on first damage and closed by a kill message, 30s of
             inactivity, or zoning. Nested under the zone session it happened in.
         plugin:
           kind: TraceTable
-          spec: {}
+          spec:
+            # Rows are only clickable when links.trace is set. ${traceId} is substituted by the
+            # plugin with the clicked row's trace id; both spellings of the variable query param are
+            # written because this Perses build's URL convention is unverified — the one it does not
+            # understand is simply ignored.
+            links:
+              trace: "?var-fight=${traceId}&fight=${traceId}"
         queries:
           - kind: TraceQuery
             spec:
@@ -38,7 +56,7 @@ spec:
       spec:
         display:
           name: Fight timeline
-          description: Gantt view of the selected trace — zone session with its fights nested inside.
+          description: Gantt view of the selected fight — the zone session with its fights nested inside.
         plugin:
           kind: TracingGanttChart
           spec: {}
@@ -51,8 +69,7 @@ spec:
                   datasource:
                     kind: JaegerDatasource
                     name: jaeger
-                  service: everquest
-                  limit: 50
+                  traceId: "$fight"
 
   layouts:
     - kind: Grid
