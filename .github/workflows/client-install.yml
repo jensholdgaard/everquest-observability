@@ -1,0 +1,91 @@
+# Runs the member-facing Windows installer on a real Windows machine, end to end. The install path
+# is the one thing here that cannot be tested from the maintainer's Linux box, and it is the first
+# thing every guild member touches — so it gets its own CI.
+name: client installer (Windows)
+
+on:
+  push:
+    paths:
+      - 'client/windows/**'
+      - '.github/workflows/client-install.yml'
+  pull_request:
+    paths:
+      - 'client/windows/**'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Parse (catches syntax errors before anything runs)
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./client/windows/install.ps1), [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { Write-Host $_.Message }; exit 1 }
+          Write-Host "install.ps1 parses clean."
+
+      - name: Install (dummy token, no EQ folder present)
+        shell: pwsh
+        run: |
+          ./client/windows/install.ps1 -Token ci-dummy-token -NoZeal `
+            -Endpoint http://127.0.0.1:9/v1/metrics -TracesEndpoint http://127.0.0.1:9/v1/traces
+
+      - name: Verify the install landed
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'eq-otel'
+          if (-not (Test-Path (Join-Path $dir 'otelcol-contrib.exe'))) { throw "collector exe missing" }
+          if (-not (Test-Path (Join-Path $dir 'config.yaml'))) { throw "config missing" }
+          if (-not (Get-ScheduledTask -TaskName EQ-OTel-Collector -ErrorAction SilentlyContinue)) {
+            throw "logon task missing"
+          }
+          # The receiver Zeal posts to must actually accept a connection.
+          $c = New-Object System.Net.Sockets.TcpClient
+          $c.Connect('127.0.0.1', 4318); $c.Close()
+          Write-Host "collector exe, config, logon task and 127.0.0.1:4318 all present."
+
+      - name: Accept an OTLP payload (the exact shape Zeal posts)
+        shell: pwsh
+        run: |
+          $body = @{
+            resourceMetrics = @(@{
+              resource = @{ attributes = @(@{ key = 'service.name'; value = @{ stringValue = 'everquest' } }) }
+              scopeMetrics = @(@{
+                metrics = @(@{
+                  name = 'eq.combat.damage'
+                  sum = @{
+                    aggregationTemporality = 2
+                    isMonotonic = $true
+                    dataPoints = @(@{
+                      asInt = '42'
+                      timeUnixNano = '1700000000000000000'
+                      startTimeUnixNano = '1700000000000000000'
+                      attributes = @(@{ key = 'eq.zone.name'; value = @{ stringValue = 'Netherbian Lair' } })
+                    })
+                  }
+                })
+              })
+            })
+          } | ConvertTo-Json -Depth 20
+          $r = Invoke-WebRequest -UseBasicParsing -Method POST -Uri http://127.0.0.1:4318/v1/metrics `
+                 -ContentType 'application/json' -Body $body
+          if ($r.StatusCode -ne 200) { throw "collector rejected the payload: $($r.StatusCode)" }
+          Write-Host "collector accepted an OTLP/HTTP JSON metrics payload (200)."
+
+      - name: Re-run install (must be idempotent)
+        shell: pwsh
+        run: ./client/windows/install.ps1 -Token ci-dummy-token-2 -NoZeal
+
+      - name: Uninstall leaves nothing behind
+        shell: pwsh
+        run: |
+          ./client/windows/install.ps1 -Uninstall
+          if (Test-Path (Join-Path $env:LOCALAPPDATA 'eq-otel')) { throw "install dir survived uninstall" }
+          if (Get-ScheduledTask -TaskName EQ-OTel-Collector -ErrorAction SilentlyContinue) {
+            throw "logon task survived uninstall"
+          }
+          Write-Host "uninstall is clean."

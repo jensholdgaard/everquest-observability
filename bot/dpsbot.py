@@ -23,12 +23,13 @@ DM_TEMPLATE = """Your personal DPS meter token (keep it private):
 ```
 {token}
 ```
-**Windows setup (2 min):**
+**Windows setup — open PowerShell (no admin) and paste this one line:**
 ```powershell
-irm https://raw.githubusercontent.com/jensholdgaard/everquest-observability/main/client/windows/install.ps1 -OutFile install.ps1
-powershell -ExecutionPolicy Bypass -File .\\install.ps1
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/jensholdgaard/everquest-observability/main/client/windows/install.ps1))) -Token {token}
 ```
-Paste the token when asked, then in game: `/otlp on`
+It finds your EverQuest folder by itself. Then in game: `/otlp on`
+(That line contains your token — don't paste it in a public channel. It also stays in your
+PowerShell history; `-Uninstall` on the same script removes everything later.)
 Dashboard: {dashboard} (log in with Discord — your access is already set up)\nYou also get a personal project to save your own dashboards in; the guild ones stay read-only.
 Lost the token? Ask an officer to `/dpsrevoke` you, then run `/dpstoken` again."""
 

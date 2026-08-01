@@ -4,18 +4,20 @@ Get your character on the guild's live DPS/heal dashboard at
 **https://dps.nocturnal-guild.de** (log in with Discord).
 
 ## What you need
-- The guild **ingest token** — ask Jens (Discord).
-- Your EverQuest folder path (where `eqgame.exe` lives).
+Just your **ingest token** — run `/dpstoken` in the guild Discord and the bot DMs you one, along
+with the exact command below, token already filled in.
 
-## Install (2 minutes)
-1. Open **PowerShell** (no admin needed).
-2. Run:
+## Install (one line, no admin)
+1. Open **PowerShell** (Start → type `powershell`).
+2. Paste the line the bot DM'd you. It looks like this:
    ```powershell
-   irm https://raw.githubusercontent.com/jensholdgaard/everquest-observability/main/client/windows/install.ps1 -OutFile install.ps1
-   powershell -ExecutionPolicy Bypass -File .\install.ps1
+   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jensholdgaard/everquest-observability/main/client/windows/install.ps1))) -Token YOUR-TOKEN
    ```
-3. Paste the token when asked, and your EQ folder (it backs up your old `Zeal.asi` automatically).
-4. Start EQ, log in, and type: **`/otlp on`** (once — it persists).
+3. Start EQ, log in, and type: **`/otlp on`** (once — it persists).
+
+The installer finds your EverQuest folder on its own (from the running game, the usual install
+locations, or a folder picker), backs up any existing `Zeal.asi`, verifies each download against a
+published SHA256, and confirms the collector is really listening before it says "done".
 
 That's it. Your DPS and heals now appear on the dashboard, attributed to your character
 (pets included). The collector runs hidden in the background and starts with Windows.
@@ -31,7 +33,18 @@ That's it. Your DPS and heals now appear on the dashboard, attributed to your ch
 
 ## Uninstall
 ```powershell
-Unregister-ScheduledTask -TaskName EQ-OTel-Collector -Confirm:$false
-Remove-Item -Recurse -Force "$env:LOCALAPPDATA\eq-otel"
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/jensholdgaard/everquest-observability/main/client/windows/install.ps1))) -Uninstall
 ```
-Restore your backed-up `Zeal.asi.bak-*` in the EQ folder if you want stock Zeal back.
+Removes the collector, its config (token included) and the logon task. Restore your backed-up
+`Zeal.asi.bak-*` in the EQ folder if you want stock Zeal back.
+
+## Other options
+```powershell
+.\install.ps1 -Token abc -EqDir "C:\TAKP"   # skip detection, use this folder
+.\install.ps1 -Token abc -NoZeal            # collector only, leave Zeal.asi alone
+```
+
+## For maintainers
+`.github/workflows/client-install.yml` runs this script on a real `windows-latest` runner on every
+change: install → verify exe/config/logon task/port → POST a real OTLP payload at it → re-install
+(idempotency) → uninstall.
