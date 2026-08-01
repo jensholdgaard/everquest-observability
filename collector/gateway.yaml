@@ -26,7 +26,8 @@ exporters:
   # Metrics -> on-box Prometheus OTLP receiver.
   otlphttp/prometheus:
     metrics_endpoint: http://127.0.0.1:9090/api/v1/otlp/v1/metrics
-  # Logs land here (dropped) until Ourios is wired in.
+  # Logs are not stored. Clients don't forward them (chat contains private conversation); this
+  # pipeline exists only so a stray log post gets a clean 200 instead of an error.
   debug:
     verbosity: basic
 
@@ -37,6 +38,10 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [otlphttp/prometheus]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]   # TODO: Tempo (or another trace store) for per-fight views
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]

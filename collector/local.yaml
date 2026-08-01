@@ -25,11 +25,12 @@ exporters:
   # Metrics -> central Prometheus ingest (Caddy /otlp -> Prometheus OTLP receiver).
   otlphttp/metrics:
     metrics_endpoint: ${env:EQ_METRICS_ENDPOINT}
+    traces_endpoint: ${env:EQ_TRACES_ENDPOINT}
     auth:
       authenticator: bearertokenauth
   # Logs -> Ourios (fill in when ready). For now they're just dropped by the debug exporter.
   debug:
-    verbosity: basic
+    verbosity: detailed
 
 service:
   extensions: [bearertokenauth]
@@ -38,7 +39,11 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [otlphttp/metrics]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/metrics]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [debug]   # TODO: replace with otlphttp -> Ourios
+      exporters: [debug]   # terminates here by design — see the exporter comment above

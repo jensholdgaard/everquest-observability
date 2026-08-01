@@ -9,6 +9,7 @@ cd "$ROOT"
 : "${INGEST_TOKEN:?set INGEST_TOKEN (in .env or env)}"
 export INGEST_TOKEN
 export EQ_METRICS_ENDPOINT="${EQ_METRICS_ENDPOINT:-https://dps.nocturnal-guild.de/otlp/v1/metrics}"
+export EQ_TRACES_ENDPOINT="${EQ_TRACES_ENDPOINT:-https://dps.nocturnal-guild.de/otlp/v1/traces}"
 
 BIN="$ROOT/.local/otelcol-contrib"
 if [ ! -x "$BIN" ]; then

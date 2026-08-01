@@ -24,7 +24,8 @@ That's it. Your DPS and heals now appear on the dashboard, attributed to your ch
 - The game only talks to `localhost` — a small [OpenTelemetry Collector](https://opentelemetry.io)
   on **your** machine forwards **metrics** (damage/heal counters, attack/haste) to the guild server,
   authenticated with your token.
-- Your combat log **lines are not uploaded** (logs are dropped locally for now).
+- Your chat and combat log **lines are never uploaded** — the collector drops them on your machine.
+  Only numeric metrics (damage/heal counters, attack, haste) and fight timings leave your PC.
 - Turn it off anytime: `/otlp off` in game, and/or disable the `EQ-OTel-Collector` task in Task
   Scheduler.
 

@@ -8,7 +8,8 @@
 param(
   [string]$Token,
   [string]$EqDir,
-  [string]$Endpoint = "https://dps.nocturnal-guild.de/otlp/v1/metrics"
+  [string]$Endpoint = "https://dps.nocturnal-guild.de/otlp/v1/metrics",
+  [string]$TracesEndpoint = "https://dps.nocturnal-guild.de/otlp/v1/traces"
 )
 $ErrorActionPreference = "Stop"
 $Ver = "0.157.0"
@@ -51,6 +52,7 @@ processors:
 exporters:
   otlphttp/metrics:
     metrics_endpoint: $Endpoint
+    traces_endpoint: $TracesEndpoint
     auth:
       authenticator: bearertokenauth
   debug:
@@ -62,6 +64,11 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [otlphttp/metrics]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/metrics]
+    # Chat lines stay on your machine: the logs pipeline drops them (never uploaded).
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
