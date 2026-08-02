@@ -108,6 +108,19 @@ jobs:
             Write-Host "refused a non-EverQuest folder, as it should."
           }
 
+      # The logon trigger must be registered against a fully qualified principal. A bare
+      # $env:USERNAME passed here for years and still failed on a member's machine with
+      # "0x80070057 (7,25):UserId:<name>", so assert the canonical form is what got registered.
+      - name: Logon trigger is bound to a fully qualified principal
+        shell: pwsh
+        run: |
+          $task = Get-ScheduledTask -TaskName EQ-OTel-Collector
+          $userIds = @($task.Triggers | ForEach-Object { $_.UserId } | Where-Object { $_ })
+          foreach ($id in $userIds) {
+            if ($id -notmatch '\\') { throw "trigger UserId '$id' is not fully qualified" }
+          }
+          Write-Host "trigger principal(s): $($userIds -join ', ')"
+
       - name: Re-run install (must be idempotent)
         shell: pwsh
         run: ./client/windows/install.ps1 -Token ci-dummy-token-2 -NoZeal

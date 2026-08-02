@@ -213,14 +213,49 @@ if ($NoAutostart) {
 } else {
 
 $Action = New-ScheduledTaskAction -Execute $Exe -Argument "--config `"$Cfg`""
-$Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $Settings = New-ScheduledTaskSettingsSet -Hidden -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings | Out-Null
-Start-ScheduledTask -TaskName $TaskName
+
+# The logon trigger's UserId must be a fully qualified principal (COMPUTER\User, MicrosoftAccount\...,
+# AzureAD\...). $env:USERNAME is the bare name, which resolves on many machines and fails on others
+# with "0x80070057 InvalidArgument (7,25):UserId:<name>" - reported by a guild member whose account
+# did not resolve unqualified. WindowsIdentity returns the canonical form for every account type.
+$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+$registered = $false
+foreach ($trigger in @((New-ScheduledTaskTrigger -AtLogOn -User $identity), (New-ScheduledTaskTrigger -AtLogOn))) {
+  try {
+    Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $trigger -Settings $Settings -ErrorAction Stop | Out-Null
+    $registered = $true
+    break
+  } catch {
+    # Fall through to the untargeted trigger (fires for any logon), then to no task at all.
+  }
+}
+
+if ($registered) {
+  Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+} else {
+  # Never fail the whole install over the autostart: a collector the member starts by hand still
+  # works, and losing the token and the Zeal install over a Task Scheduler quirk would be worse.
+  Write-Host "Could not register the logon task on this machine - installing the manual launcher instead." -ForegroundColor Yellow
+  $bat = Join-Path $Dir "run-otelcol.bat"
+  $batLines = (@(
+    '@echo off'
+    'title EQ OTel Collector'
+    '"%~dp0otelcol-contrib.exe" --config "%~dp0config.yaml"'
+    'pause'
+  ) -join "`r`n") + "`r`n"
+  [System.IO.File]::WriteAllText($bat, $batLines, [System.Text.Encoding]::ASCII)
+  Start-Process -FilePath $Exe -ArgumentList "--config `"$Cfg`"" -WindowStyle Hidden
+  Write-Host "  Start it yourself next time: $bat"
+}
 
 if (Wait-ForPort -Port 4318) {
-  Write-Host "Collector running and listening on 127.0.0.1:4318 (starts automatically at logon)." -ForegroundColor Green
+  if ($registered) {
+    Write-Host "Collector running and listening on 127.0.0.1:4318 (starts automatically at logon)." -ForegroundColor Green
+  } else {
+    Write-Host "Collector running and listening on 127.0.0.1:4318 (start it manually next session)." -ForegroundColor Green
+  }
 } else {
   throw "The collector did not start listening on 127.0.0.1:4318. Check Task Scheduler -> $TaskName."
 }
