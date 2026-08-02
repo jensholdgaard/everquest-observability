@@ -34,20 +34,20 @@ datasources, so the browser only ever talks to Perses' own origin.
 
 ## Dashboards
 
-Seven focused pages rather than one long one - each answers a single question:
+One page, **EverQuest**, with each section collapsible. Damage and the tank view open by default;
+healing, raid targets, group, character, fights and telemetry health stay closed until wanted, so the
+page opens on what a raid looks at most without hiding anything behind navigation.
 
-| Dashboard | Answers |
+| Section | Answers |
 |---|---|
-| **EverQuest DPS** | who is doing damage right now, and to what |
-| **EverQuest Healing** | who is healing, and how much |
-| **EverQuest Raid Targets** | when did it die, when does my lockout drop |
-| **EverQuest Group** | who is in the group, and how many of them are reporting |
-| **EverQuest Telemetry Health** | whose collector is alive |
-| **EverQuest Character** | attack, haste, damage taken |
-| **EverQuest Fights** | per-encounter timeline (traces) |
-
-The DPS, Healing and Group pages carry the **group** / **zone** / **player** selectors; the raid and
-health pages are guild-wide and carry none.
+| **Right now / Damage** | who is doing damage, and to what |
+| **Tank (healing efficiency)** | is the tank being kept up - healing received vs damage taken, in raw HP |
+| **Healing** | healing landing on each character |
+| **Raid targets** | when did it die, when does my lockout drop |
+| **Group** | who is in the group, and how many are reporting |
+| **Character** | attack, haste, damage taken |
+| **Fights** | per-encounter trace timeline |
+| **Telemetry health** | whose collector is alive, and which Zeal build they run |
 
 **Raid targets** replace the "post the time of death in Discord" ritual: the server sends the
 lockout notice from `NPC::CreateCorpse`, so its arrival *is* the time of death, captured

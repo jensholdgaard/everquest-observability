@@ -1,4 +1,5 @@
-# Generated split of the original single dashboard: one purpose per page.
+# One page, with each section collapsible: sections other than damage stay closed so the page
+# opens on what a raid looks at most, without hiding anything behind navigation.
 apiVersion: perses.dev/v1alpha1
 kind: Dashboard
 metadata:
@@ -6,9 +7,9 @@ metadata:
   project: everquest
 spec:
   display:
-    name: EverQuest DPS
-  duration: 15m
-  refreshInterval: 10s
+    name: EverQuest
+  duration: 1h
+  refreshInterval: 30s
   variables:
   - kind: ListVariable
     spec:
@@ -52,6 +53,27 @@ spec:
           labelName: everquest_combat_source
           matchers:
           - everquest_combat_damage_total{everquest_combat_source_type="player"}
+  - kind: ListVariable
+    spec:
+      name: character
+      display:
+        name: Character (tank)
+      allowAllValue: true
+      allowMultiple: false
+      customAllValue: .+
+      plugin:
+        kind: PrometheusLabelValuesVariable
+        spec:
+          labelName: everquest_combat_source
+          matchers:
+          - everquest_combat_heal_total{everquest_combat_direction="incoming"}
+  - kind: TextVariable
+    spec:
+      name: fight
+      display:
+        name: Fight (trace id)
+        description: Click a row in the fights table to fill this in, or paste a trace id.
+      value: ''
   panels:
     stat_group_dps:
       kind: Panel
@@ -222,11 +244,434 @@ spec:
                   everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))
                   > 0)
                 seriesNameFormat: '{{everquest_combat_target}}'
+    stat_hps:
+      kind: Panel
+      spec:
+        display:
+          name: Healing received /s
+          description: Healing landing on the group. This is measured from the RECEIVING client, because the server only messages
+            the target of a heal (Mob::HealDamage sends YOU_HEALED to the target and nothing to the healer) - so healing per
+            healer is not observable on this server at all. Averaged over 5 minutes, because healing is bursty - a 1-minute
+            window reads zero between casts and looks broken.
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(rate(everquest_combat_heal_total{everquest_combat_direction="incoming", everquest_group_leader=~"$group",
+                  everquest_zone_name=~"$zone"}[5m]))
+    heal_bars:
+      kind: Panel
+      spec:
+        display:
+          name: Healing received (per character)
+          description: Who is being kept alive, and how hard.
+        plugin:
+          kind: BarChart
+          spec:
+            calculation: last
+            sort: desc
+            mode: value
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: topk(20, sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="incoming",
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[5m])) > 0)
+                seriesNameFormat: '{{everquest_combat_source}}'
+    heal_history:
+      kind: Panel
+      spec:
+        display:
+          name: Healing received over time
+          description: The source label is the character who was healed - the heal message never names the healer.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="incoming",
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[5m])) > 0
+                seriesNameFormat: '{{everquest_combat_source}}'
+    heal_total:
+      kind: Panel
+      spec:
+        display:
+          name: Healing received (dashboard window)
+          description: Total hit points healed onto each character over the selected time range.
+        plugin:
+          kind: BarChart
+          spec:
+            calculation: sum
+            sort: desc
+            mode: value
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (everquest_combat_source) (increase(everquest_combat_heal_total{everquest_combat_direction="incoming",
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[$__range])) > 0
+                seriesNameFormat: '{{everquest_combat_source}}'
+    tank_healed:
+      kind: Panel
+      spec:
+        display:
+          name: Healing received (HP)
+          description: 'Hit points healed onto this character over the dashboard range. This is EFFECTIVE healing: the server
+            clamps the reported amount to the hit points actually missing (acthealed = maxhp - curhp), so overheal is already
+            excluded - what you see is what landed.'
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(increase(everquest_combat_heal_total{everquest_combat_direction="incoming", everquest_combat_source=~"$character",
+                  everquest_group_leader=~"$group"}[$__range]))
+    tank_damaged:
+      kind: Panel
+      spec:
+        display:
+          name: Damage taken (HP)
+          description: Hit points taken by this character over the same range.
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(increase(everquest_combat_damage_total{everquest_combat_direction="incoming", everquest_combat_target=~"$character",
+                  everquest_group_leader=~"$group"}[$__range]))
+    tank_balance:
+      kind: Panel
+      spec:
+        display:
+          name: Healing received vs damage taken (HP/s)
+          description: Healers keeping up when the healing line sits at or above the damage line.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(rate(everquest_combat_heal_total{everquest_combat_direction="incoming", everquest_combat_source=~"$character",
+                  everquest_group_leader=~"$group"}[5m]))
+                seriesNameFormat: healing received
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(rate(everquest_combat_damage_total{everquest_combat_direction="incoming", everquest_combat_target=~"$character",
+                  everquest_group_leader=~"$group"}[5m]))
+                seriesNameFormat: damage taken
+    raid_tod:
+      kind: Panel
+      spec:
+        display:
+          name: Time of death (hours ago)
+          description: 'Captured from the server''s lockout notice, which is sent at the kill (NPC::CreateCorpse), not at
+            looting - so nobody has to post the TOD by hand.
+
+            '
+        plugin:
+          kind: TimeSeriesTable
+          spec: {}
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: (time() - max by (everquest_raid_target) (max_over_time(everquest_raid_kill_timestamp[7d]))) / 3600
+                seriesNameFormat: '{{everquest_raid_target}}'
+    raid_lockouts:
+      kind: Panel
+      spec:
+        display:
+          name: Lockout remaining (hours)
+          description: Counts down to the instant the lockout expires; drops off the list once it has.
+        plugin:
+          kind: TimeSeriesTable
+          spec: {}
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: (max by (everquest_raid_target) (max_over_time(everquest_raid_lockout_expiry[7d])) - time()) / 3600
+                  > 0
+                seriesNameFormat: '{{everquest_raid_target}}'
+    stat_group_size:
+      kind: Panel
+      spec:
+        display:
+          name: Group size
+          description: Members in the group, including anyone not running the DPS meter.
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: count(count by (everquest_character_name) (everquest_group_member{everquest_group_leader=~"$group"}))
+    stat_reporting:
+      kind: Panel
+      spec:
+        display:
+          name: Reporting damage
+          description: 'Group members who produced damage in the last 5 minutes. Lower than group size means someone is not
+            running the meter (or has it off) - which is the usual reason a group total looks too low.
+
+            '
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: count(count by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                  everquest_combat_source_type="player", everquest_group_leader=~"$group"}[5m]) > 0))
+    group_roster:
+      kind: Panel
+      spec:
+        display:
+          name: Roster
+          description: Everyone in the group, whether or not they report telemetry.
+        plugin:
+          kind: TimeSeriesTable
+          spec: {}
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: max by (everquest_character_name) (everquest_group_member{everquest_group_leader=~"$group"})
+                seriesNameFormat: '{{everquest_character_name}}'
+    stat_collectors_online:
+      kind: Panel
+      spec:
+        display:
+          name: Collectors online
+          description: Members whose collector has checked in within the last 5 minutes.
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: count(group by (everquest_reporter) (otelcol_process_uptime_seconds_total))
+    collector_status:
+      kind: Panel
+      spec:
+        display:
+          name: Collector last check-in (minutes ago)
+          description: 'One row per member who has ever reported. A climbing number means their collector is down or their
+            machine is off - not that they are idle.
+
+            '
+        plugin:
+          kind: TimeSeriesTable
+          spec: {}
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: (time() - max by (everquest_reporter) (max_over_time(timestamp(otelcol_process_uptime_seconds_total)[7d:5m])))
+                  / 60
+                seriesNameFormat: '{{everquest_reporter}}'
+    client_builds:
+      kind: Panel
+      spec:
+        display:
+          name: Client build per member (last 7d)
+          description: Zeal reports its release plus the build hash as service.version, so a feature that is missing for one
+            member can be checked against the build they are actually running rather than the one they were asked to install.
+        plugin:
+          kind: TimeSeriesTable
+          spec: {}
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: count by (everquest_reporter, service_version) (count_over_time(everquest_combat_damage_total[7d]))
+                seriesNameFormat: '{{everquest_reporter}} - {{service_version}}'
+    attack:
+      kind: Panel
+      spec:
+        display:
+          name: Attack rating
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: everquest_character_attack_ratio{everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}
+                seriesNameFormat: '{{service_instance_id}}'
+    haste:
+      kind: Panel
+      spec:
+        display:
+          name: Haste %
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: everquest_character_haste_percent{everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}
+                seriesNameFormat: '{{service_instance_id}}'
+    incoming:
+      kind: Panel
+      spec:
+        display:
+          name: Damage taken
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (service_instance_id) (rate(everquest_combat_damage_total{everquest_combat_direction="incoming",
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[30s])) > 0
+                seriesNameFormat: '{{service_instance_id}}'
+    fights_table:
+      kind: Panel
+      spec:
+        display:
+          name: Recent fights (click a row to load its timeline)
+          description: 'Each fight is a span opened on first damage and closed by a kill message, 30s of inactivity, or zoning.
+            Nested under the zone session it happened in.
+
+            '
+        plugin:
+          kind: TraceTable
+          spec:
+            links:
+              trace: ?var-fight=${traceId}&fight=${traceId}
+        queries:
+        - kind: TraceQuery
+          spec:
+            plugin:
+              kind: JaegerTraceQuery
+              spec:
+                datasource:
+                  kind: JaegerDatasource
+                  name: jaeger
+                service: everquest
+                limit: 50
+    fight_gantt:
+      kind: Panel
+      spec:
+        display:
+          name: Fight timeline
+          description: "Gantt view of the selected fight \u2014 the zone session with its fights nested inside."
+        plugin:
+          kind: TracingGanttChart
+          spec: {}
+        queries:
+        - kind: TraceQuery
+          spec:
+            plugin:
+              kind: JaegerTraceQuery
+              spec:
+                datasource:
+                  kind: JaegerDatasource
+                  name: jaeger
+                traceId: $fight
   layouts:
   - kind: Grid
     spec:
       display:
         title: Right now
+        collapse:
+          open: true
       items:
       - x: 0
         y: 0
@@ -250,6 +695,8 @@ spec:
     spec:
       display:
         title: Damage
+        collapse:
+          open: true
       items:
       - x: 0
         y: 0
@@ -281,3 +728,172 @@ spec:
         height: 7
         content:
           $ref: '#/spec/panels/dps_by_target'
+  - kind: Grid
+    spec:
+      display:
+        title: Tank (healing efficiency)
+        collapse:
+          open: true
+      items:
+      - x: 0
+        y: 0
+        width: 6
+        height: 5
+        content:
+          $ref: '#/spec/panels/tank_healed'
+      - x: 6
+        y: 0
+        width: 6
+        height: 5
+        content:
+          $ref: '#/spec/panels/tank_damaged'
+      - x: 12
+        y: 0
+        width: 12
+        height: 5
+        content:
+          $ref: '#/spec/panels/tank_balance'
+  - kind: Grid
+    spec:
+      display:
+        title: Healing
+        collapse:
+          open: false
+      items:
+      - x: 0
+        y: 0
+        width: 24
+        height: 4
+        content:
+          $ref: '#/spec/panels/stat_hps'
+      - x: 0
+        y: 4
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/heal_bars'
+      - x: 12
+        y: 4
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/heal_history'
+      - x: 0
+        y: 12
+        width: 24
+        height: 8
+        content:
+          $ref: '#/spec/panels/heal_total'
+  - kind: Grid
+    spec:
+      display:
+        title: Raid targets
+        collapse:
+          open: false
+      items:
+      - x: 0
+        y: 0
+        width: 12
+        height: 10
+        content:
+          $ref: '#/spec/panels/raid_tod'
+      - x: 12
+        y: 0
+        width: 12
+        height: 10
+        content:
+          $ref: '#/spec/panels/raid_lockouts'
+  - kind: Grid
+    spec:
+      display:
+        title: Group
+        collapse:
+          open: false
+      items:
+      - x: 0
+        y: 0
+        width: 6
+        height: 5
+        content:
+          $ref: '#/spec/panels/stat_group_size'
+      - x: 6
+        y: 0
+        width: 6
+        height: 5
+        content:
+          $ref: '#/spec/panels/stat_reporting'
+      - x: 12
+        y: 0
+        width: 12
+        height: 5
+        content:
+          $ref: '#/spec/panels/group_roster'
+  - kind: Grid
+    spec:
+      display:
+        title: Character
+        collapse:
+          open: false
+      items:
+      - x: 0
+        y: 0
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/attack'
+      - x: 8
+        y: 0
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/haste'
+      - x: 16
+        y: 0
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/incoming'
+  - kind: Grid
+    spec:
+      display:
+        title: Fights
+        collapse:
+          open: false
+      items:
+      - x: 0
+        y: 0
+        width: 24
+        height: 10
+        content:
+          $ref: '#/spec/panels/fights_table'
+      - x: 0
+        y: 10
+        width: 24
+        height: 10
+        content:
+          $ref: '#/spec/panels/fight_gantt'
+  - kind: Grid
+    spec:
+      display:
+        title: Telemetry health
+        collapse:
+          open: false
+      items:
+      - x: 0
+        y: 0
+        width: 6
+        height: 6
+        content:
+          $ref: '#/spec/panels/stat_collectors_online'
+      - x: 6
+        y: 0
+        width: 18
+        height: 6
+        content:
+          $ref: '#/spec/panels/collector_status'
+      - x: 0
+        y: 6
+        width: 24
+        height: 6
+        content:
+          $ref: '#/spec/panels/client_builds'
