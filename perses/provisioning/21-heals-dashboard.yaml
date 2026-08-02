@@ -1,0 +1,143 @@
+# Generated split of the original single dashboard: one purpose per page.
+apiVersion: perses.dev/v1alpha1
+kind: Dashboard
+metadata:
+  name: eq-heals
+  project: everquest
+spec:
+  display:
+    name: EverQuest Healing
+  duration: 15m
+  refreshInterval: 10s
+  variables:
+  - kind: ListVariable
+    spec:
+      name: group
+      display:
+        name: Group (leader)
+      allowAllValue: true
+      allowMultiple: false
+      customAllValue: .*
+      plugin:
+        kind: PrometheusLabelValuesVariable
+        spec:
+          labelName: everquest_group_leader
+          matchers:
+          - everquest_group_member
+  - kind: ListVariable
+    spec:
+      name: zone
+      display:
+        name: Zone
+      allowAllValue: true
+      allowMultiple: false
+      customAllValue: .+
+      plugin:
+        kind: PrometheusLabelValuesVariable
+        spec:
+          labelName: everquest_zone_name
+          matchers:
+          - everquest_combat_damage_total
+  - kind: ListVariable
+    spec:
+      name: player
+      display:
+        name: Player
+      allowAllValue: true
+      allowMultiple: true
+      customAllValue: .+
+      plugin:
+        kind: PrometheusLabelValuesVariable
+        spec:
+          labelName: everquest_combat_source
+          matchers:
+          - everquest_combat_damage_total{everquest_combat_source_type="player"}
+  panels:
+    stat_hps:
+      kind: Panel
+      spec:
+        display:
+          name: Group HPS
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(rate(everquest_combat_heal_total{everquest_combat_direction="outgoing", everquest_group_leader=~"$group",
+                  everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))
+    heal_bars:
+      kind: Panel
+      spec:
+        display:
+          name: Healing meter (HPS)
+        plugin:
+          kind: BarChart
+          spec:
+            calculation: last
+            sort: desc
+            mode: value
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: topk(20, sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="outgoing",
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))
+                  > 0)
+                seriesNameFormat: '{{everquest_combat_source}}'
+    heal_history:
+      kind: Panel
+      spec:
+        display:
+          name: Healing history
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="outgoing",
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[30s]))
+                  > 0
+                seriesNameFormat: '{{everquest_combat_source}}'
+  layouts:
+  - kind: Grid
+    spec:
+      display:
+        title: Healing
+      items:
+      - x: 0
+        y: 0
+        width: 24
+        height: 4
+        content:
+          $ref: '#/spec/panels/stat_hps'
+      - x: 0
+        y: 4
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/heal_bars'
+      - x: 12
+        y: 4
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/heal_history'

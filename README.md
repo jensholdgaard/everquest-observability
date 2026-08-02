@@ -34,8 +34,24 @@ datasources, so the browser only ever talks to Perses' own origin.
 
 ## Dashboards
 
-**EverQuest DPS** — group DPS/HPS, a DPS meter bar chart, leaderboard, damage mix by type, damage
-by target, plus attack/haste. Three selectors: **group** (by leader), **zone**, and **player**.
+Seven focused pages rather than one long one - each answers a single question:
+
+| Dashboard | Answers |
+|---|---|
+| **EverQuest DPS** | who is doing damage right now, and to what |
+| **EverQuest Healing** | who is healing, and how much |
+| **EverQuest Raid Targets** | when did it die, when does my lockout drop |
+| **EverQuest Group** | who is in the group, and how many of them are reporting |
+| **EverQuest Telemetry Health** | whose collector is alive |
+| **EverQuest Character** | attack, haste, damage taken |
+| **EverQuest Fights** | per-encounter timeline (traces) |
+
+The DPS, Healing and Group pages carry the **group** / **zone** / **player** selectors; the raid and
+health pages are guild-wide and carry none.
+
+**Raid targets** replace the "post the time of death in Discord" ritual: the server sends the
+lockout notice from `NPC::CreateCorpse`, so its arrival *is* the time of death, captured
+independently by everyone who received the lockout.
 
 A group is identified by its leader (`everquest.group.leader`), not by zone — two groups in one
 zone used to merge into a single "group DPS" number. The **Who is in the group** row shows group

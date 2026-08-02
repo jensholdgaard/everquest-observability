@@ -1,0 +1,71 @@
+# Generated split of the original single dashboard: one purpose per page.
+apiVersion: perses.dev/v1alpha1
+kind: Dashboard
+metadata:
+  name: eq-health
+  project: everquest
+spec:
+  display:
+    name: EverQuest Telemetry Health
+  duration: 6h
+  refreshInterval: 30s
+  panels:
+    stat_collectors_online:
+      kind: Panel
+      spec:
+        display:
+          name: Collectors online
+          description: Members whose collector has checked in within the last 5 minutes.
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: count(group by (everquest_reporter) (otelcol_process_uptime_seconds_total))
+    collector_status:
+      kind: Panel
+      spec:
+        display:
+          name: Collector last check-in (minutes ago)
+          description: 'One row per member who has ever reported. A climbing number means their collector is down or their
+            machine is off - not that they are idle.
+
+            '
+        plugin:
+          kind: TimeSeriesTable
+          spec: {}
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: (time() - max by (everquest_reporter) (max_over_time(timestamp(otelcol_process_uptime_seconds_total)[7d:5m])))
+                  / 60
+                seriesNameFormat: '{{everquest_reporter}}'
+  layouts:
+  - kind: Grid
+    spec:
+      display:
+        title: Collectors
+      items:
+      - x: 0
+        y: 0
+        width: 6
+        height: 6
+        content:
+          $ref: '#/spec/panels/stat_collectors_online'
+      - x: 6
+        y: 0
+        width: 18
+        height: 6
+        content:
+          $ref: '#/spec/panels/collector_status'

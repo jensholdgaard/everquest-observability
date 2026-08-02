@@ -1,3 +1,4 @@
+# Generated split of the original single dashboard: one purpose per page.
 apiVersion: perses.dev/v1alpha1
 kind: Dashboard
 metadata:
@@ -8,213 +9,50 @@ spec:
     name: EverQuest DPS
   duration: 15m
   refreshInterval: 10s
-
   variables:
-    # Which group to show. A group is identified by its leader; solo play and clients older than the
-    # group release carry no group label at all.
-    #
-    # "All" is `.*`, not `.+`: in PromQL a regex match on an absent label tests against the empty
-    # string, so `.+` would silently hide every ungrouped and pre-upgrade series - i.e. the whole
-    # dashboard, until every member updates. `.*` keeps them, and picking a specific group still
-    # narrows correctly.
-    - kind: ListVariable
-      spec:
-        name: group
-        display:
-          name: Group (leader)
-        allowAllValue: true
-        allowMultiple: false
-        customAllValue: ".*"
-        plugin:
-          kind: PrometheusLabelValuesVariable
-          spec:
-            labelName: everquest_group_leader
-            matchers:
-              - 'everquest_group_member'
-    - kind: ListVariable
-      spec:
-        name: zone
-        display:
-          name: Zone
-        allowAllValue: true
-        allowMultiple: false
-        customAllValue: ".+"
-        plugin:
-          kind: PrometheusLabelValuesVariable
-          spec:
-            labelName: everquest_zone_name
-            matchers:
-              - 'everquest_combat_damage_total'
-    - kind: ListVariable
-      spec:
-        name: player
-        display:
-          name: Player
-        allowAllValue: true
-        allowMultiple: true
-        customAllValue: ".+"
-        plugin:
-          kind: PrometheusLabelValuesVariable
-          spec:
-            labelName: everquest_combat_source
-            matchers:
-              - 'everquest_combat_damage_total{everquest_combat_source_type="player"}'
-
+  - kind: ListVariable
+    spec:
+      name: group
+      display:
+        name: Group (leader)
+      allowAllValue: true
+      allowMultiple: false
+      customAllValue: .*
+      plugin:
+        kind: PrometheusLabelValuesVariable
+        spec:
+          labelName: everquest_group_leader
+          matchers:
+          - everquest_group_member
+  - kind: ListVariable
+    spec:
+      name: zone
+      display:
+        name: Zone
+      allowAllValue: true
+      allowMultiple: false
+      customAllValue: .+
+      plugin:
+        kind: PrometheusLabelValuesVariable
+        spec:
+          labelName: everquest_zone_name
+          matchers:
+          - everquest_combat_damage_total
+  - kind: ListVariable
+    spec:
+      name: player
+      display:
+        name: Player
+      allowAllValue: true
+      allowMultiple: true
+      customAllValue: .+
+      plugin:
+        kind: PrometheusLabelValuesVariable
+        spec:
+          labelName: everquest_combat_source
+          matchers:
+          - everquest_combat_damage_total{everquest_combat_source_type="player"}
   panels:
-    # Collector health. otelcol_* series come from each member's own collector reporting itself on a
-    # 60s timer through the same authenticated path, so they carry the gateway-stamped
-    # everquest_reporter and arrive whether or not that member is playing. Before this, a dead
-    # collector and an idle player produced identical evidence: silence.
-    stat_collectors_online:
-      kind: Panel
-      spec:
-        display:
-          name: Collectors online
-          description: Members whose collector has checked in within the last 5 minutes.
-        plugin:
-          kind: StatChart
-          spec:
-            calculation: last-number
-            format:
-              unit: decimal
-              decimalPlaces: 0
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'count(group by (everquest_reporter) (otelcol_process_uptime_seconds_total))'
-
-    collector_status:
-      kind: Panel
-      spec:
-        display:
-          name: Collector last check-in (minutes ago)
-          description: >
-            One row per member who has ever reported. A climbing number means their collector is
-            down or their machine is off - not that they are idle.
-        plugin:
-          kind: TimeSeriesTable
-          spec: {}
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: '(time() - max by (everquest_reporter) (max_over_time(timestamp(otelcol_process_uptime_seconds_total)[7d:5m]))) / 60'
-                  seriesNameFormat: '{{everquest_reporter}}'
-
-    # Raid targets. Both values are absolute instants from the client, so the countdowns stay correct
-    # between exports and across logouts - an 18h lockout outlives any session. Aggregated with max
-    # by target because everyone in the raid receives the same lockout and reports it independently;
-    # their agreement is what makes the number trustworthy without anyone posting it in Discord.
-    raid_tod:
-      kind: Panel
-      spec:
-        display:
-          name: Time of death (hours ago)
-          description: >
-            Captured from the server's lockout notice, which is sent at the kill (NPC::CreateCorpse),
-            not at looting - so nobody has to post the TOD by hand.
-        plugin:
-          kind: TimeSeriesTable
-          spec: {}
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: '(time() - max by (everquest_raid_target) (max_over_time(everquest_raid_kill_timestamp[7d]))) / 3600'
-                  seriesNameFormat: '{{everquest_raid_target}}'
-
-    raid_lockouts:
-      kind: Panel
-      spec:
-        display:
-          name: Lockout remaining (hours)
-          description: Counts down to the instant the lockout expires; drops off the list once it has.
-        plugin:
-          kind: TimeSeriesTable
-          spec: {}
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: '(max by (everquest_raid_target) (max_over_time(everquest_raid_lockout_expiry[7d])) - time()) / 3600 > 0'
-                  seriesNameFormat: '{{everquest_raid_target}}'
-
-    # Roster panels. Every grouped member running Zeal reports the same roster, so each member name
-    # arrives once per reporting client; the aggregations below collapse that to distinct names
-    # (`by (everquest_character_name)`) rather than summing, which would multiply the group size by
-    # the number of people reporting it.
-    stat_group_size:
-      kind: Panel
-      spec:
-        display:
-          name: Group size
-          description: Members in the group, including anyone not running the DPS meter.
-        plugin:
-          kind: StatChart
-          spec:
-            calculation: last-number
-            format:
-              unit: decimal
-              decimalPlaces: 0
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'count(count by (everquest_character_name) (everquest_group_member{everquest_group_leader=~"$group"}))'
-
-    stat_reporting:
-      kind: Panel
-      spec:
-        display:
-          name: Reporting damage
-          description: >
-            Group members who produced damage in the last 5 minutes. Lower than group size means
-            someone is not running the meter (or has it off) - which is the usual reason a group
-            total looks too low.
-        plugin:
-          kind: StatChart
-          spec:
-            calculation: last-number
-            format:
-              unit: decimal
-              decimalPlaces: 0
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'count(count by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_group_leader=~"$group"}[5m]) > 0))'
-
-    group_roster:
-      kind: Panel
-      spec:
-        display:
-          name: Roster
-          description: Everyone in the group, whether or not they report telemetry.
-        plugin:
-          kind: TimeSeriesTable
-          spec: {}
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'max by (everquest_character_name) (everquest_group_member{everquest_group_leader=~"$group"})'
-                  seriesNameFormat: '{{everquest_character_name}}'
-
     stat_group_dps:
       kind: Panel
       spec:
@@ -228,13 +66,13 @@ spec:
               unit: decimal
               decimalPlaces: 0
         queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'sum(rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))'
-
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player",
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))
     stat_top_dps:
       kind: Panel
       spec:
@@ -248,33 +86,13 @@ spec:
               unit: decimal
               decimalPlaces: 0
         queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'max(sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])))'
-
-    stat_hps:
-      kind: Panel
-      spec:
-        display:
-          name: Group HPS
-        plugin:
-          kind: StatChart
+        - kind: TimeSeriesQuery
           spec:
-            calculation: last-number
-            format:
-              unit: decimal
-              decimalPlaces: 0
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'sum(rate(everquest_combat_heal_total{everquest_combat_direction="outgoing", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))'
-
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: max(sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                  everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])))
     stat_taken:
       kind: Panel
       spec:
@@ -288,13 +106,13 @@ spec:
               unit: decimal
               decimalPlaces: 0
         queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'sum(rate(everquest_combat_damage_total{everquest_combat_direction="incoming", everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[60s]))'
-
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(rate(everquest_combat_damage_total{everquest_combat_direction="incoming", everquest_group_leader=~"$group",
+                  everquest_zone_name=~"$zone"}[60s]))
     dps_bars:
       kind: Panel
       spec:
@@ -310,14 +128,15 @@ spec:
               unit: decimal
               decimalPlaces: 0
         queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'topk(20, sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])) > 0)'
-                  seriesNameFormat: '{{everquest_combat_source}}'
-
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: topk(20, sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                  everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))
+                  > 0)
+                seriesNameFormat: '{{everquest_combat_source}}'
     dps_table:
       kind: Panel
       spec:
@@ -327,14 +146,15 @@ spec:
           kind: TimeSeriesTable
           spec: {}
         queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'sort_desc(sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])) > 0)'
-                  seriesNameFormat: '{{everquest_combat_source}}'
-
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sort_desc(sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                  everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))
+                  > 0)
+                seriesNameFormat: '{{everquest_combat_source}}'
     dps_history:
       kind: Panel
       spec:
@@ -346,14 +166,15 @@ spec:
             legend:
               position: bottom
         queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[30s])) > 0'
-                  seriesNameFormat: '{{everquest_combat_source}}'
-
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                  everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[30s]))
+                  > 0
+                seriesNameFormat: '{{everquest_combat_source}}'
     damage_mix:
       kind: Panel
       spec:
@@ -368,14 +189,15 @@ spec:
               unit: decimal
               decimalPlaces: 0
         queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'sum by (everquest_combat_damage_type) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])) > 0'
-                  seriesNameFormat: '{{everquest_combat_damage_type}}'
-
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (everquest_combat_damage_type) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                  everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))
+                  > 0
+                seriesNameFormat: '{{everquest_combat_damage_type}}'
     dps_by_target:
       kind: Panel
       spec:
@@ -391,167 +213,71 @@ spec:
               unit: decimal
               decimalPlaces: 0
         queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'topk(15, sum by (everquest_combat_target) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])) > 0)'
-                  seriesNameFormat: '{{everquest_combat_target}}'
-
-    heal_bars:
-      kind: Panel
-      spec:
-        display:
-          name: Healing meter (HPS)
-        plugin:
-          kind: BarChart
+        - kind: TimeSeriesQuery
           spec:
-            calculation: last
-            sort: desc
-            mode: value
-            format:
-              unit: decimal
-              decimalPlaces: 0
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'topk(20, sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="outgoing", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s])) > 0)'
-                  seriesNameFormat: '{{everquest_combat_source}}'
-
-    heal_history:
-      kind: Panel
-      spec:
-        display:
-          name: Healing history
-        plugin:
-          kind: TimeSeriesChart
-          spec:
-            legend:
-              position: bottom
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="outgoing", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[30s])) > 0'
-                  seriesNameFormat: '{{everquest_combat_source}}'
-
-    attack:
-      kind: Panel
-      spec:
-        display:
-          name: Attack rating
-        plugin:
-          kind: TimeSeriesChart
-          spec:
-            legend:
-              position: bottom
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'everquest_character_attack_ratio{everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}'
-                  seriesNameFormat: '{{service_instance_id}}'
-
-    haste:
-      kind: Panel
-      spec:
-        display:
-          name: Haste %
-        plugin:
-          kind: TimeSeriesChart
-          spec:
-            legend:
-              position: bottom
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'everquest_character_haste_percent{everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}'
-                  seriesNameFormat: '{{service_instance_id}}'
-
-    incoming:
-      kind: Panel
-      spec:
-        display:
-          name: Damage taken
-        plugin:
-          kind: TimeSeriesChart
-          spec:
-            legend:
-              position: bottom
-        queries:
-          - kind: TimeSeriesQuery
-            spec:
-              plugin:
-                kind: PrometheusTimeSeriesQuery
-                spec:
-                  query: 'sum by (service_instance_id) (rate(everquest_combat_damage_total{everquest_combat_direction="incoming", everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[30s])) > 0'
-                  seriesNameFormat: '{{service_instance_id}}'
-
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: topk(15, sum by (everquest_combat_target) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                  everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))
+                  > 0)
+                seriesNameFormat: '{{everquest_combat_target}}'
   layouts:
-    - kind: Grid
-      spec:
-        display:
-          title: Right now
-        items:
-          - {x: 0,  y: 0, width: 6, height: 4, content: {$ref: '#/spec/panels/stat_group_dps'}}
-          - {x: 6,  y: 0, width: 6, height: 4, content: {$ref: '#/spec/panels/stat_top_dps'}}
-          - {x: 12, y: 0, width: 6, height: 4, content: {$ref: '#/spec/panels/stat_hps'}}
-          - {x: 18, y: 0, width: 6, height: 4, content: {$ref: '#/spec/panels/stat_taken'}}
-    - kind: Grid
-      spec:
-        display:
-          title: Raid targets
-        items:
-          - {x: 0,  y: 0, width: 12, height: 6, content: {$ref: '#/spec/panels/raid_tod'}}
-          - {x: 12, y: 0, width: 12, height: 6, content: {$ref: '#/spec/panels/raid_lockouts'}}
-    - kind: Grid
-      spec:
-        display:
-          title: Collectors
-        items:
-          - {x: 0,  y: 0, width: 6, height: 5, content: {$ref: '#/spec/panels/stat_collectors_online'}}
-          - {x: 6,  y: 0, width: 18, height: 5, content: {$ref: '#/spec/panels/collector_status'}}
-    - kind: Grid
-      spec:
-        display:
-          title: Who is in the group
-        items:
-          - {x: 0,  y: 0, width: 6, height: 5, content: {$ref: '#/spec/panels/stat_group_size'}}
-          - {x: 6,  y: 0, width: 6, height: 5, content: {$ref: '#/spec/panels/stat_reporting'}}
-          - {x: 12, y: 0, width: 12, height: 5, content: {$ref: '#/spec/panels/group_roster'}}
-    - kind: Grid
-      spec:
-        display:
-          title: Damage
-        items:
-          - {x: 0,  y: 0, width: 14, height: 9, content: {$ref: '#/spec/panels/dps_bars'}}
-          - {x: 14, y: 0, width: 10, height: 9, content: {$ref: '#/spec/panels/dps_table'}}
-          - {x: 0,  y: 9, width: 16, height: 8, content: {$ref: '#/spec/panels/dps_history'}}
-          - {x: 16, y: 9, width: 8,  height: 8, content: {$ref: '#/spec/panels/damage_mix'}}
-          - {x: 0,  y: 17, width: 24, height: 7, content: {$ref: '#/spec/panels/dps_by_target'}}
-    - kind: Grid
-      spec:
-        display:
-          title: Healing
-        items:
-          - {x: 0,  y: 0, width: 12, height: 8, content: {$ref: '#/spec/panels/heal_bars'}}
-          - {x: 12, y: 0, width: 12, height: 8, content: {$ref: '#/spec/panels/heal_history'}}
-    - kind: Grid
-      spec:
-        display:
-          title: Character
-        items:
-          - {x: 0,  y: 0, width: 8, height: 7, content: {$ref: '#/spec/panels/attack'}}
-          - {x: 8,  y: 0, width: 8, height: 7, content: {$ref: '#/spec/panels/haste'}}
-          - {x: 16, y: 0, width: 8, height: 7, content: {$ref: '#/spec/panels/incoming'}}
+  - kind: Grid
+    spec:
+      display:
+        title: Right now
+      items:
+      - x: 0
+        y: 0
+        width: 8
+        height: 4
+        content:
+          $ref: '#/spec/panels/stat_group_dps'
+      - x: 8
+        y: 0
+        width: 8
+        height: 4
+        content:
+          $ref: '#/spec/panels/stat_top_dps'
+      - x: 16
+        y: 0
+        width: 8
+        height: 4
+        content:
+          $ref: '#/spec/panels/stat_taken'
+  - kind: Grid
+    spec:
+      display:
+        title: Damage
+      items:
+      - x: 0
+        y: 0
+        width: 14
+        height: 9
+        content:
+          $ref: '#/spec/panels/dps_bars'
+      - x: 14
+        y: 0
+        width: 10
+        height: 9
+        content:
+          $ref: '#/spec/panels/dps_table'
+      - x: 0
+        y: 9
+        width: 16
+        height: 8
+        content:
+          $ref: '#/spec/panels/dps_history'
+      - x: 16
+        y: 9
+        width: 8
+        height: 8
+        content:
+          $ref: '#/spec/panels/damage_mix'
+      - x: 0
+        y: 17
+        width: 24
+        height: 7
+        content:
+          $ref: '#/spec/panels/dps_by_target'

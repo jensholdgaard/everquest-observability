@@ -1,0 +1,112 @@
+# Generated split of the original single dashboard: one purpose per page.
+apiVersion: perses.dev/v1alpha1
+kind: Dashboard
+metadata:
+  name: eq-group
+  project: everquest
+spec:
+  display:
+    name: EverQuest Group
+  duration: 15m
+  refreshInterval: 10s
+  variables:
+  - kind: ListVariable
+    spec:
+      name: group
+      display:
+        name: Group (leader)
+      allowAllValue: true
+      allowMultiple: false
+      customAllValue: .*
+      plugin:
+        kind: PrometheusLabelValuesVariable
+        spec:
+          labelName: everquest_group_leader
+          matchers:
+          - everquest_group_member
+  panels:
+    stat_group_size:
+      kind: Panel
+      spec:
+        display:
+          name: Group size
+          description: Members in the group, including anyone not running the DPS meter.
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: count(count by (everquest_character_name) (everquest_group_member{everquest_group_leader=~"$group"}))
+    stat_reporting:
+      kind: Panel
+      spec:
+        display:
+          name: Reporting damage
+          description: 'Group members who produced damage in the last 5 minutes. Lower than group size means someone is not
+            running the meter (or has it off) - which is the usual reason a group total looks too low.
+
+            '
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: count(count by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                  everquest_combat_source_type="player", everquest_group_leader=~"$group"}[5m]) > 0))
+    group_roster:
+      kind: Panel
+      spec:
+        display:
+          name: Roster
+          description: Everyone in the group, whether or not they report telemetry.
+        plugin:
+          kind: TimeSeriesTable
+          spec: {}
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: max by (everquest_character_name) (everquest_group_member{everquest_group_leader=~"$group"})
+                seriesNameFormat: '{{everquest_character_name}}'
+  layouts:
+  - kind: Grid
+    spec:
+      display:
+        title: Who is in the group
+      items:
+      - x: 0
+        y: 0
+        width: 6
+        height: 5
+        content:
+          $ref: '#/spec/panels/stat_group_size'
+      - x: 6
+        y: 0
+        width: 6
+        height: 5
+        content:
+          $ref: '#/spec/panels/stat_reporting'
+      - x: 12
+        y: 0
+        width: 12
+        height: 5
+        content:
+          $ref: '#/spec/panels/group_roster'
