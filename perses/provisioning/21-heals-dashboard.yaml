@@ -7,7 +7,7 @@ metadata:
 spec:
   display:
     name: EverQuest Healing
-  duration: 15m
+  duration: 1h
   refreshInterval: 10s
   variables:
   - kind: ListVariable
@@ -60,7 +60,8 @@ spec:
           name: Healing received /s
           description: Healing landing on the group. This is measured from the RECEIVING client, because the server only messages
             the target of a heal (Mob::HealDamage sends YOU_HEALED to the target and nothing to the healer) - so healing per
-            healer is not observable on this server at all.
+            healer is not observable on this server at all. Averaged over 5 minutes, because healing is bursty - a 1-minute
+            window reads zero between casts and looks broken.
         plugin:
           kind: StatChart
           spec:
@@ -75,7 +76,7 @@ spec:
               kind: PrometheusTimeSeriesQuery
               spec:
                 query: sum(rate(everquest_combat_heal_total{everquest_combat_direction="incoming", everquest_group_leader=~"$group",
-                  everquest_zone_name=~"$zone"}[60s]))
+                  everquest_zone_name=~"$zone"}[5m]))
     heal_bars:
       kind: Panel
       spec:
@@ -98,7 +99,7 @@ spec:
               kind: PrometheusTimeSeriesQuery
               spec:
                 query: topk(20, sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="incoming",
-                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[60s])) > 0)
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[5m])) > 0)
                 seriesNameFormat: '{{everquest_combat_source}}'
     heal_history:
       kind: Panel
@@ -118,7 +119,31 @@ spec:
               kind: PrometheusTimeSeriesQuery
               spec:
                 query: sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="incoming",
-                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[30s])) > 0
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[5m])) > 0
+                seriesNameFormat: '{{everquest_combat_source}}'
+    heal_total:
+      kind: Panel
+      spec:
+        display:
+          name: Healing received (dashboard window)
+          description: Total hit points healed onto each character over the selected time range.
+        plugin:
+          kind: BarChart
+          spec:
+            calculation: sum
+            sort: desc
+            mode: value
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (everquest_combat_source) (increase(everquest_combat_heal_total{everquest_combat_direction="incoming",
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[$__range])) > 0
                 seriesNameFormat: '{{everquest_combat_source}}'
   layouts:
   - kind: Grid
@@ -144,3 +169,9 @@ spec:
         height: 8
         content:
           $ref: '#/spec/panels/heal_history'
+      - x: 0
+        y: 12
+        width: 24
+        height: 8
+        content:
+          $ref: '#/spec/panels/heal_total'
