@@ -29,6 +29,7 @@ $Dir = Join-Path $env:LOCALAPPDATA "eq-otel"
 $Exe = Join-Path $Dir "otelcol-contrib.exe"
 $Cfg = Join-Path $Dir "config.yaml"
 $TaskName = "EQ-OTel-Collector"
+$ShortcutName = "EQ DPS Meter.lnk"
 
 function Stop-Collector {
   Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -86,6 +87,26 @@ function Write-Launcher {
     'pause'
   ) -join "`r`n") + "`r`n"
   [System.IO.File]::WriteAllText($bat, $batLines, [System.Text.Encoding]::ASCII)
+
+  # A shortcut on the Desktop, because the people who end up needing the launcher are exactly the
+  # ones who will not remember a path under AppData. GetFolderPath resolves a OneDrive-redirected
+  # Desktop correctly, where "$env:USERPROFILE\Desktop" would not.
+  try {
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    if ($desktop) {
+      $ws = New-Object -ComObject WScript.Shell
+      $lnk = $ws.CreateShortcut((Join-Path $desktop $ShortcutName))
+      $lnk.TargetPath = $bat
+      $lnk.WorkingDirectory = $Dir
+      $lnk.IconLocation = "$Exe,0"
+      $lnk.WindowStyle = 7   # start minimised: it needs to run, not to be watched
+      $lnk.Description = 'Starts the EverQuest DPS meter collector. Leave it running while you play.'
+      $lnk.Save()
+      Write-Host "Desktop shortcut created: $ShortcutName" -ForegroundColor Green
+    }
+  } catch {
+    # No desktop, no COM, or a locked-down profile: the .bat still works.
+  }
   return $bat
 }
 
@@ -108,7 +129,9 @@ if ($Uninstall) {
   Stop-Collector
   Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
   if (Test-Path $Dir) { Remove-Item -Recurse -Force $Dir }
-  Write-Host "Removed the collector, its config (token included) and the logon task." -ForegroundColor Green
+  $desktop = [Environment]::GetFolderPath('Desktop')
+  if ($desktop) { Remove-Item -LiteralPath (Join-Path $desktop $ShortcutName) -Force -ErrorAction SilentlyContinue }
+  Write-Host "Removed the collector, its config (token included), the logon task and the shortcut." -ForegroundColor Green
   Write-Host "Zeal.asi was left alone - restore a Zeal.asi.bak-* in your EQ folder for stock Zeal."
   return
 }

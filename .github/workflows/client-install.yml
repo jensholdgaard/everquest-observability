@@ -203,6 +203,16 @@ jobs:
           if (Get-Process otelcol-contrib -ErrorAction SilentlyContinue) {
             throw "-NoAutostart started the collector anyway"
           }
+          $desktop = [Environment]::GetFolderPath('Desktop')
+          if ($desktop -and (Test-Path $desktop)) {
+            $lnk = Join-Path $desktop 'EQ DPS Meter.lnk'
+            if (-not (Test-Path $lnk)) { throw "desktop shortcut not created" }
+            # It has to point at the launcher, not at wherever it happened to be created from.
+            $ws = New-Object -ComObject WScript.Shell
+            $target = $ws.CreateShortcut($lnk).TargetPath
+            if ($target -notlike '*run-otelcol.bat') { throw "shortcut points at '$target'" }
+            Write-Host "shortcut -> $target"
+          }
           Write-Host "no task, no running process, launcher present."
 
       - name: The launcher actually starts the collector
@@ -218,3 +228,8 @@ jobs:
           if (-not $ok) { throw "run-otelcol.bat did not bring the collector up" }
           Write-Host "run-otelcol.bat works."
           ./client/windows/install.ps1 -Uninstall
+          $desktop = [Environment]::GetFolderPath('Desktop')
+          if ($desktop -and (Test-Path (Join-Path $desktop 'EQ DPS Meter.lnk'))) {
+            throw "desktop shortcut survived uninstall"
+          }
+          Write-Host "shortcut removed by uninstall."
