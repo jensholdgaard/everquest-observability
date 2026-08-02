@@ -276,9 +276,14 @@ if (-not $NoZeal) {
     if (-not (Test-Path (Join-Path $EqDir 'eqgame.exe'))) {
       throw "$EqDir does not contain eqgame.exe - that is not the EverQuest folder."
     }
+    # A running game holds Zeal.asi open, so replacing it would fail somewhere further down with a
+    # cryptic IO error. Say so plainly instead.
+    if (Get-Process eqgame -ErrorAction SilentlyContinue) {
+      throw "EverQuest is running - close it first, then run this again (Zeal.asi is in use while the game is open)."
+    }
     $asi = Join-Path $EqDir "Zeal.asi"
-    if (Test-Path $asi) {
-      Copy-Item $asi "$asi.bak-$(Get-Date -Format yyyyMMdd-HHmmss)"
+    if (Test-Path -LiteralPath $asi) {
+      Copy-Item -LiteralPath $asi -Destination "$asi.bak-$(Get-Date -Format yyyyMMdd-HHmmss)" -Force
       Write-Host "Backed up your existing Zeal.asi."
     }
     Write-Host "Downloading Zeal (otlp-preview release)..."
@@ -300,7 +305,19 @@ if (-not $NoZeal) {
       }
       Write-Host "Zeal.asi checksum verified." -ForegroundColor Green
     }
-    Move-Item -Force $tmpAsi $asi
+    # Copy-then-delete rather than Move-Item -Force: a member hit "Move-Item : Cannot create a file
+    # that already exists" replacing an existing Zeal.asi, i.e. the move did not carry
+    # replace-existing through. Copy-Item -Force overwrites reliably, including a read-only target,
+    # which an existing Zeal.asi unpacked from an archive often is.
+    if (Test-Path -LiteralPath $asi) {
+      try { Set-ItemProperty -LiteralPath $asi -Name IsReadOnly -Value $false -ErrorAction Stop } catch {}
+    }
+    try {
+      Copy-Item -LiteralPath $tmpAsi -Destination $asi -Force -ErrorAction Stop
+    } catch {
+      throw "Could not write $asi ($($_.Exception.Message)). Close EverQuest if it is running, or check folder permissions."
+    }
+    Remove-Item -LiteralPath $tmpAsi -Force -ErrorAction SilentlyContinue
     Write-Host "Zeal.asi installed to $EqDir." -ForegroundColor Green
   }
 }

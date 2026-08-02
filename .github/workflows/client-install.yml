@@ -85,6 +85,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path $eq | Out-Null
           Set-Content -Path (Join-Path $eq 'eqgame.exe') -Value 'stand-in for the game'
           Set-Content -Path (Join-Path $eq 'Zeal.asi')   -Value 'stand-in for the previous Zeal'
+          # Read-only, because that is a likely reason a member's replace failed with
+          # "Move-Item : Cannot create a file that already exists" while CI stayed green: an
+          # existing Zeal.asi unpacked from an archive is often marked read-only.
+          Set-ItemProperty -Path (Join-Path $eq 'Zeal.asi') -Name IsReadOnly -Value $true
           ./client/windows/install.ps1 -Token ci-dummy-token -EqDir $eq `
             -Endpoint http://127.0.0.1:9/v1/metrics -TracesEndpoint http://127.0.0.1:9/v1/traces
           if (-not (Get-ChildItem $eq -Filter 'Zeal.asi.bak-*')) {
