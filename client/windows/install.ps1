@@ -74,6 +74,21 @@ function Select-EqDirDialog {
   return $null
 }
 
+# The launcher members use when no logon task runs the collector for them.
+function Write-Launcher {
+  $bat = Join-Path $Dir "run-otelcol.bat"
+  # %~dp0 = the .bat's own folder, so it works from a double-click or a shortcut; `pause` keeps the
+  # window up if the collector exits with an error. ASCII + CRLF is what cmd.exe is happiest with.
+  $batLines = (@(
+    '@echo off'
+    'title EQ OTel Collector'
+    '"%~dp0otelcol-contrib.exe" --config "%~dp0config.yaml"'
+    'pause'
+  ) -join "`r`n") + "`r`n"
+  [System.IO.File]::WriteAllText($bat, $batLines, [System.Text.Encoding]::ASCII)
+  return $bat
+}
+
 function Wait-ForPort {
   param([int]$Port = 4318, [int]$TimeoutSec = 25)
   $deadline = (Get-Date).AddSeconds($TimeoutSec)
@@ -213,16 +228,7 @@ if ($LASTEXITCODE -ne 0) { throw "The collector rejected the config:`n$validatio
 # a reasonable thing to refuse on someone else's machine. -NoAutostart writes a launcher instead, so
 # the collector only ever runs when you double-click it. (Zigzap.)
 if ($NoAutostart) {
-  $bat = Join-Path $Dir "run-otelcol.bat"
-  # %~dp0 = the .bat's own folder, so it works from a double-click or a shortcut; `pause` keeps the
-  # window up if the collector exits with an error. ASCII + CRLF is what cmd.exe is happiest with.
-  $batLines = (@(
-    '@echo off'
-    'title EQ OTel Collector'
-    '"%~dp0otelcol-contrib.exe" --config "%~dp0config.yaml"'
-    'pause'
-  ) -join "`r`n") + "`r`n"
-  [System.IO.File]::WriteAllText($bat, $batLines, [System.Text.Encoding]::ASCII)
+  $bat = Write-Launcher
   Write-Host "No autostart configured. Start the collector yourself when you want to play:" -ForegroundColor Green
   Write-Host "  $bat"
 } else {
@@ -247,22 +253,23 @@ foreach ($trigger in @((New-ScheduledTaskTrigger -AtLogOn -User $identity), (New
   }
 }
 
-if ($registered) {
-  Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-} else {
-  # Never fail the whole install over the autostart: a collector the member starts by hand still
-  # works, and losing the token and the Zeal install over a Task Scheduler quirk would be worse.
-  Write-Host "Could not register the logon task on this machine - installing the manual launcher instead." -ForegroundColor Yellow
-  $bat = Join-Path $Dir "run-otelcol.bat"
-  $batLines = (@(
-    '@echo off'
-    'title EQ OTel Collector'
-    '"%~dp0otelcol-contrib.exe" --config "%~dp0config.yaml"'
-    'pause'
-  ) -join "`r`n") + "`r`n"
-  [System.IO.File]::WriteAllText($bat, $batLines, [System.Text.Encoding]::ASCII)
+if ($registered) { Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue }
+
+# Registering a task is not the same as it running one. A member hit exactly that: the task showed
+# State=Ready, the collector ran perfectly when launched by hand, and Task Scheduler simply never
+# started it (Get-ScheduledTaskInfo's LastTaskResult says why). Autostart is a convenience, so its
+# failure must not cost the member a working collector - start it directly and leave the launcher.
+if (-not (Wait-ForPort -Port 4318)) {
+  if ($registered) {
+    Write-Host "The logon task did not start the collector - starting it directly instead." -ForegroundColor Yellow
+    Write-Host "  Diagnose later with: Get-ScheduledTaskInfo $TaskName | Select LastRunTime, LastTaskResult"
+  } else {
+    Write-Host "Could not register the logon task on this machine - starting the collector directly." -ForegroundColor Yellow
+  }
+  $bat = Write-Launcher
   Start-Process -FilePath $Exe -ArgumentList "--config `"$Cfg`"" -WindowStyle Hidden
-  Write-Host "  Start it yourself next time: $bat"
+  Write-Host "  Start it yourself next session: $bat"
+  $registered = $false
 }
 
 if (Wait-ForPort -Port 4318) {
@@ -272,7 +279,7 @@ if (Wait-ForPort -Port 4318) {
     Write-Host "Collector running and listening on 127.0.0.1:4318 (start it manually next session)." -ForegroundColor Green
   }
 } else {
-  throw "The collector did not start listening on 127.0.0.1:4318. Check Task Scheduler -> $TaskName."
+  throw "The collector could not be started at all. Run it by hand to see why: `"$Exe`" --config `"$Cfg`""
 }
 
 }  # end of the autostart branch
