@@ -57,10 +57,10 @@ spec:
       kind: Panel
       spec:
         display:
-          name: Group HPS
-          description: 'Healing DONE, which only a healer''s own client can report: EverQuest tells a client about heals involving
-            itself and nothing else - there is no third-person heal message at all - so a bard or warrior running the meter
-            can never see a cleric''s output. Empty here means no healer is running the client, not that healing is broken.'
+          name: Healing received /s
+          description: Healing landing on the group. This is measured from the RECEIVING client, because the server only messages
+            the target of a heal (Mob::HealDamage sends YOU_HEALED to the target and nothing to the healer) - so healing per
+            healer is not observable on this server at all.
         plugin:
           kind: StatChart
           spec:
@@ -74,14 +74,14 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: sum(rate(everquest_combat_heal_total{everquest_combat_direction="outgoing", everquest_group_leader=~"$group",
-                  everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))
+                query: sum(rate(everquest_combat_heal_total{everquest_combat_direction="incoming", everquest_group_leader=~"$group",
+                  everquest_zone_name=~"$zone"}[60s]))
     heal_bars:
       kind: Panel
       spec:
         display:
-          name: Healing meter (HPS)
-          description: Per-healer output. Requires that healer to be running the meter.
+          name: Healing received (per character)
+          description: Who is being kept alive, and how hard.
         plugin:
           kind: BarChart
           spec:
@@ -97,17 +97,15 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: topk(20, sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="outgoing",
-                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))
-                  > 0)
+                query: topk(20, sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="incoming",
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[60s])) > 0)
                 seriesNameFormat: '{{everquest_combat_source}}'
     heal_history:
       kind: Panel
       spec:
         display:
-          name: Healing history
-          description: Healing over time. Note that healing RECEIVED is recorded with the receiving character as the source,
-            because the client is never told who healed them.
+          name: Healing received over time
+          description: The source label is the character who was healed - the heal message never names the healer.
         plugin:
           kind: TimeSeriesChart
           spec:
@@ -119,28 +117,8 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="outgoing",
-                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[30s]))
-                  > 0
-                seriesNameFormat: '{{everquest_combat_source}}'
-    heals_received:
-      kind: Panel
-      spec:
-        display:
-          name: Healing received (per character)
-          description: What the current reporters can actually see. The source is the character who was healed - the heal
-            message does not name the healer.
-        plugin:
-          kind: TimeSeriesTable
-          spec: {}
-        queries:
-        - kind: TimeSeriesQuery
-          spec:
-            plugin:
-              kind: PrometheusTimeSeriesQuery
-              spec:
-                query: sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="incoming"}[60s]))
-                  > 0
+                query: sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="incoming",
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[30s])) > 0
                 seriesNameFormat: '{{everquest_combat_source}}'
   layouts:
   - kind: Grid
@@ -166,9 +144,3 @@ spec:
         height: 8
         content:
           $ref: '#/spec/panels/heal_history'
-      - x: 0
-        y: 12
-        width: 24
-        height: 7
-        content:
-          $ref: '#/spec/panels/heals_received'
