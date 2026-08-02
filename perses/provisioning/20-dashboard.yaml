@@ -106,6 +106,48 @@ spec:
                   query: '(time() - max by (everquest_reporter) (max_over_time(timestamp(otelcol_process_uptime_seconds_total)[7d:5m]))) / 60'
                   seriesNameFormat: '{{everquest_reporter}}'
 
+    # Raid targets. Both values are absolute instants from the client, so the countdowns stay correct
+    # between exports and across logouts - an 18h lockout outlives any session. Aggregated with max
+    # by target because everyone in the raid receives the same lockout and reports it independently;
+    # their agreement is what makes the number trustworthy without anyone posting it in Discord.
+    raid_tod:
+      kind: Panel
+      spec:
+        display:
+          name: Time of death (hours ago)
+          description: >
+            Captured from the server's lockout notice, which is sent at the kill (NPC::CreateCorpse),
+            not at looting - so nobody has to post the TOD by hand.
+        plugin:
+          kind: TimeSeriesTable
+          spec: {}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: '(time() - max by (everquest_raid_target) (max_over_time(everquest_raid_kill_timestamp[7d]))) / 3600'
+                  seriesNameFormat: '{{everquest_raid_target}}'
+
+    raid_lockouts:
+      kind: Panel
+      spec:
+        display:
+          name: Lockout remaining (hours)
+          description: Counts down to the instant the lockout expires; drops off the list once it has.
+        plugin:
+          kind: TimeSeriesTable
+          spec: {}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: '(max by (everquest_raid_target) (max_over_time(everquest_raid_lockout_expiry[7d])) - time()) / 3600 > 0'
+                  seriesNameFormat: '{{everquest_raid_target}}'
+
     # Roster panels. Every grouped member running Zeal reports the same roster, so each member name
     # arrives once per reporting client; the aggregations below collapse that to distinct names
     # (`by (everquest_character_name)`) rather than summing, which would multiply the group size by
@@ -466,6 +508,13 @@ spec:
           - {x: 6,  y: 0, width: 6, height: 4, content: {$ref: '#/spec/panels/stat_top_dps'}}
           - {x: 12, y: 0, width: 6, height: 4, content: {$ref: '#/spec/panels/stat_hps'}}
           - {x: 18, y: 0, width: 6, height: 4, content: {$ref: '#/spec/panels/stat_taken'}}
+    - kind: Grid
+      spec:
+        display:
+          title: Raid targets
+        items:
+          - {x: 0,  y: 0, width: 12, height: 6, content: {$ref: '#/spec/panels/raid_tod'}}
+          - {x: 12, y: 0, width: 12, height: 6, content: {$ref: '#/spec/panels/raid_lockouts'}}
     - kind: Grid
       spec:
         display:
