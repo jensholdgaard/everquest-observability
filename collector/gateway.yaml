@@ -14,8 +14,20 @@ receivers:
         endpoint: 127.0.0.1:4319
         auth:
           authenticator: bearertokenauth
+        # Needed so the reporter identity Caddy injects reaches the processor below.
+        include_metadata: true
 
 processors:
+  # Stamp the member identity the gateway *knows* (from the bearer token, mapped by Caddy) over
+  # anything the payload claims. A client controls its own character name, so a character name is a
+  # claim; the reporter is a fact. `upsert` matters: a forged everquest.reporter in the payload is
+  # overwritten rather than merged, so the attribute can always be trusted downstream.
+  attributes/reporter:
+    actions:
+      - key: everquest.reporter
+        from_context: metadata.x-eq-reporter
+        action: upsert
+
   batch:
     timeout: 2s
   memory_limiter:
@@ -39,13 +51,13 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, attributes/reporter, batch]
       exporters: [otlphttp/prometheus]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, attributes/reporter, batch]
       exporters: [otlphttp/jaeger]
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, attributes/reporter, batch]
       exporters: [debug]   # TODO: otlphttp -> Ourios

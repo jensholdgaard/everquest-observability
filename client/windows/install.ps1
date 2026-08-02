@@ -164,6 +164,21 @@ exporters:
   debug:
     verbosity: basic
 service:
+  # Heartbeat: report collector health on a timer, whether or not the game is running. Without it a
+  # dead collector and an idle player look identical - Zeal only posts while you are in game.
+  telemetry:
+    metrics:
+      level: basic
+      readers:
+        - periodic:
+            interval: 60000
+            exporter:
+              otlp:
+                protocol: http/protobuf
+                # Full URL: declarative telemetry config does not append /v1/metrics.
+                endpoint: $Endpoint
+                headers:
+                  Authorization: "Bearer $Token"
   extensions: [bearertokenauth]
   pipelines:
     # AUDIT MODE: to see everything locally before any of it leaves your machine, set

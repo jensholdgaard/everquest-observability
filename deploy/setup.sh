@@ -93,6 +93,7 @@ if [ ! -x /usr/local/bin/otelcol-contrib ]; then
 fi
 mkdir -p /etc/eq-otel
 cp -f "$REPO_DIR/collector/gateway.yaml" /etc/eq-otel/gateway.yaml
+install -m 0755 "$REPO_DIR/deploy/render-reporters.sh" /usr/local/bin/eq-render-reporters
 touch /etc/eq-otel/tokens.txt
 chmod 600 /etc/eq-otel/tokens.txt
 cat > /etc/systemd/system/eq-gateway.service <<'UNIT'
@@ -160,8 +161,18 @@ ${PERSES_DOMAIN} {
 	encode zstd gzip
 
 	# OTLP ingest -> gateway collector (authenticates, then routes metrics to Prometheus).
+	#
+	# The bearer token identifies a member, but the collector's auth extension never reveals which
+	# token matched - so the lookup happens here, and the answer rides along as a header the client
+	# cannot set (handle_path strips anything inbound by matching on our own map only).
 	handle_path /otlp/* {
-		reverse_proxy 127.0.0.1:4319
+		map {header.Authorization} {eq_reporter} {
+			import /etc/caddy/eq-reporters.map
+			default ""
+		}
+		reverse_proxy 127.0.0.1:4319 {
+			header_up X-EQ-Reporter {eq_reporter}
+		}
 	}
 
 	# Perses dashboard.
@@ -184,6 +195,25 @@ RestartSec=3
 WantedBy=multi-user.target
 UNIT
 
+# --- Reporter map: token -> Discord member, regenerated whenever tokens change ----
+touch /etc/caddy/eq-reporters.map
+cat > /etc/systemd/system/eq-reporters-reload.service <<'UNIT'
+[Unit]
+Description=Render the Caddy token->member map and reload Caddy
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/eq-render-reporters
+UNIT
+cat > /etc/systemd/system/eq-reporters-reload.path <<'UNIT'
+[Unit]
+Description=Watch the ingest token file for membership changes
+[Path]
+PathModified=/etc/eq-otel/tokens.txt
+Unit=eq-reporters-reload.service
+[Install]
+WantedBy=multi-user.target
+UNIT
+
 # --- Firewall ---------------------------------------------------------------
 ufw allow OpenSSH >/dev/null 2>&1 || true
 ufw allow 80/tcp  >/dev/null 2>&1 || true
@@ -201,7 +231,8 @@ systemctl restart eq-gateway
 systemctl enable --now perses
 systemctl restart perses
 systemctl enable --now caddy
-systemctl reload caddy || systemctl restart caddy
+systemctl enable --now eq-reporters-reload.path
+/usr/local/bin/eq-render-reporters || true   # renders the map, then reloads Caddy itself
 
 echo "Deployed. Point ${PERSES_DOMAIN} at this host; Caddy will obtain the TLS cert automatically."
 systemctl is-active perses caddy || true

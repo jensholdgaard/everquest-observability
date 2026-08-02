@@ -33,6 +33,27 @@ exporters:
     verbosity: detailed
 
 service:
+  # Heartbeat: the collector reports its own health on a timer, whether or not the game is running.
+  #
+  # Without this, a dead collector and an idle player are indistinguishable - Zeal only posts while
+  # you are in game, so silence means either "not playing" or "nothing is listening on 4318", and
+  # telling those apart has taken a backend query every time. These points travel the same
+  # authenticated path, so the gateway stamps them with the member identity too: the answer to
+  # "whose collector is down?" arrives without anyone having to say which character they are on.
+  telemetry:
+    metrics:
+      level: basic
+      readers:
+        - periodic:
+            interval: 60000
+            exporter:
+              otlp:
+                protocol: http/protobuf
+                # Full URL: declarative telemetry config does NOT append /v1/metrics
+                # the way OTEL_EXPORTER_OTLP_ENDPOINT does - a base URL here gets a 405.
+                endpoint: ${env:EQ_METRICS_ENDPOINT}
+                headers:
+                  Authorization: "Bearer ${env:INGEST_TOKEN}"
   extensions: [bearertokenauth]
   pipelines:
     metrics:
