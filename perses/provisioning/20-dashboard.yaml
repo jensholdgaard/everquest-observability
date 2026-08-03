@@ -695,6 +695,38 @@ spec:
                   kind: JaegerDatasource
                   name: jaeger
                 traceId: $fight
+    lockout_bars:
+      kind: Panel
+      spec:
+        display:
+          name: Lockout remaining
+          description: Share of each lockout still to run. Full bar = just killed, empty = about to lift. Green under a third
+            remaining means it is nearly free to kill again.
+        plugin:
+          kind: GaugeChart
+          spec:
+            calculation: last-number
+            format:
+              unit: percent-decimal
+              decimalPlaces: 0
+            thresholds:
+              mode: percent
+              defaultColor: '#4CAF50'
+              steps:
+              - value: 0.33
+                color: '#FFC107'
+              - value: 0.66
+                color: '#F44336'
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: clamp_min((max by (everquest_raid_target) (max_over_time(everquest_raid_lockout_expiry_seconds[14d]))
+                  - time()) / (max by (everquest_raid_target) (max_over_time(everquest_raid_lockout_expiry_seconds[14d]))
+                  - max by (everquest_raid_target) (max_over_time(everquest_raid_kill_timestamp_seconds[14d]))), 0) > 0
+                seriesNameFormat: '{{everquest_raid_target}}'
   layouts:
   - kind: Grid
     spec:
@@ -823,12 +855,18 @@ spec:
       items:
       - x: 0
         y: 0
+        width: 24
+        height: 8
+        content:
+          $ref: '#/spec/panels/lockout_bars'
+      - x: 0
+        y: 8
         width: 12
         height: 10
         content:
           $ref: '#/spec/panels/raid_tod'
       - x: 12
-        y: 0
+        y: 8
         width: 12
         height: 10
         content:
