@@ -224,9 +224,9 @@ spec:
       spec:
         display:
           name: Damage mix (by type)
-          description: Melee, spells, damage over time and damage shield. Every weapon skill (slash, crush, pierce, bash,
-            kick, hand-to-hand, backstab, archery, throwing) is folded into 'melee' - the per-skill split is still in the
-            metric if you want it.
+          description: One slice per damage type. 'melee' is the catch-all for a damage type the client sends with no specific
+            classification; every other slice is a real distinction (hth is hand-to-hand, spell is direct spell damage, dot
+            is a damage-over-time tick, damage_shield is your shield).
         plugin:
           kind: PieChart
           spec:
@@ -241,38 +241,10 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: sum(rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player",
-                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player", everquest_combat_target=~"$target",
-                  everquest_combat_damage_type=~"slash|crush|pierce|bash|kick|hth|backstab|archery|throwing|special|melee"}[60s]))
-                  > 0
-                seriesNameFormat: melee
-        - kind: TimeSeriesQuery
-          spec:
-            plugin:
-              kind: PrometheusTimeSeriesQuery
-              spec:
-                query: sum(rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player",
-                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player", everquest_combat_target=~"$target",
-                  everquest_combat_damage_type="spell"}[60s])) > 0
-                seriesNameFormat: spell
-        - kind: TimeSeriesQuery
-          spec:
-            plugin:
-              kind: PrometheusTimeSeriesQuery
-              spec:
-                query: sum(rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player",
-                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player", everquest_combat_target=~"$target",
-                  everquest_combat_damage_type="dot"}[60s])) > 0
-                seriesNameFormat: dot
-        - kind: TimeSeriesQuery
-          spec:
-            plugin:
-              kind: PrometheusTimeSeriesQuery
-              spec:
-                query: sum(rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player",
-                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player", everquest_combat_target=~"$target",
-                  everquest_combat_damage_type="damage_shield"}[60s])) > 0
-                seriesNameFormat: damage shield
+                query: sum by (everquest_combat_damage_type) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                  everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player",
+                  everquest_combat_target=~"$target"}[60s])) > 0
+                seriesNameFormat: '{{everquest_combat_damage_type}}'
     dps_by_target:
       kind: Panel
       spec:
