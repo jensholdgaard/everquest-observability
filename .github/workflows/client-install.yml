@@ -98,6 +98,19 @@ jobs:
           if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "installed Zeal.asi is not a PE image" }
           if ($bytes.Length -lt 1MB) { throw "installed Zeal.asi looks truncated ($($bytes.Length) bytes)" }
           Write-Host "Zeal.asi installed ($([math]::Round($bytes.Length/1MB,1)) MB PE image), old one backed up."
+          # The play launcher must tie the collector's lifetime to the game's.
+          $bat = Join-Path $env:LOCALAPPDATA 'eq-otel\play-eq.bat'
+          if (-not (Test-Path $bat)) { throw "play-eq.bat not created" }
+          $text = Get-Content $bat -Raw
+          foreach ($needle in @('eqgame.exe', 'otelcol-contrib.exe', 'STARTED_BY_ME', 'taskkill')) {
+            if ($text -notmatch [regex]::Escape($needle)) { throw "play-eq.bat missing $needle" }
+          }
+          if ($text -notmatch [regex]::Escape($eq)) { throw "play-eq.bat does not point at the EQ folder" }
+          $desktop = [Environment]::GetFolderPath('Desktop')
+          if ($desktop -and -not (Test-Path (Join-Path $desktop 'Play EverQuest (DPS meter).lnk'))) {
+            throw "play shortcut not created"
+          }
+          Write-Host "play-eq.bat starts the collector, runs the game, and stops what it started."
 
       - name: Reject a folder that is not EverQuest
         shell: pwsh

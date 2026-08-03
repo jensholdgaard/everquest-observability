@@ -30,6 +30,7 @@ $Exe = Join-Path $Dir "otelcol-contrib.exe"
 $Cfg = Join-Path $Dir "config.yaml"
 $TaskName = "EQ-OTel-Collector"
 $ShortcutName = "EQ DPS Meter.lnk"
+$PlayShortcutName = "Play EverQuest (DPS meter).lnk"
 
 function Stop-Collector {
   Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -110,6 +111,45 @@ function Write-Launcher {
   return $bat
 }
 
+# A launcher that ties the collector's lifetime to the game's: start it if nothing is already
+# listening, run EverQuest, then stop only the collector we started. Nothing runs at logon, nothing
+# lingers after you quit, and there is no background watcher polling for the game.
+function Write-PlayLauncher {
+  param([string]$EqFolder)
+  $exe = Join-Path $EqFolder 'eqgame.exe'
+  if (-not (Test-Path -LiteralPath $exe)) { return $null }
+  $bat = Join-Path $Dir 'play-eq.bat'
+  $lines = @(
+    '@echo off'
+    'title EverQuest (with DPS meter)'
+    'set STARTED_BY_ME='
+    'rem Only start a collector if one is not already listening (logon task, or a second window).'
+    'netstat -an | findstr /c:"127.0.0.1:4318" | findstr /i listening >nul'
+    'if errorlevel 1 ('
+    '  start "" /min "%~dp0otelcol-contrib.exe" --config "%~dp0config.yaml"'
+    '  set STARTED_BY_ME=1'
+    ')'
+    "start /wait `"`" `"$exe`" patchme"
+    'rem Leave a collector alone if it was already running before the game started.'
+    'if defined STARTED_BY_ME taskkill /im otelcol-contrib.exe /f >nul 2>&1'
+  )
+  [System.IO.File]::WriteAllText($bat, (($lines -join "`r`n") + "`r`n"), [System.Text.Encoding]::ASCII)
+  try {
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    if ($desktop) {
+      $ws = New-Object -ComObject WScript.Shell
+      $lnk = $ws.CreateShortcut((Join-Path $desktop $PlayShortcutName))
+      $lnk.TargetPath = $bat
+      $lnk.WorkingDirectory = $EqFolder
+      $lnk.IconLocation = "$exe,0"
+      $lnk.WindowStyle = 7
+      $lnk.Description = 'Starts the DPS meter, launches EverQuest, and stops the meter when you quit.'
+      $lnk.Save()
+    }
+  } catch { }
+  return $bat
+}
+
 function Wait-ForPort {
   param([int]$Port = 4318, [int]$TimeoutSec = 25)
   $deadline = (Get-Date).AddSeconds($TimeoutSec)
@@ -130,7 +170,10 @@ if ($Uninstall) {
   Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
   if (Test-Path $Dir) { Remove-Item -Recurse -Force $Dir }
   $desktop = [Environment]::GetFolderPath('Desktop')
-  if ($desktop) { Remove-Item -LiteralPath (Join-Path $desktop $ShortcutName) -Force -ErrorAction SilentlyContinue }
+  if ($desktop) {
+    Remove-Item -LiteralPath (Join-Path $desktop $ShortcutName) -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $desktop $PlayShortcutName) -Force -ErrorAction SilentlyContinue
+  }
   Write-Host "Removed the collector, its config (token included), the logon task and the shortcut." -ForegroundColor Green
   Write-Host "Zeal.asi was left alone - restore a Zeal.asi.bak-* in your EQ folder for stock Zeal."
   return
@@ -371,6 +414,11 @@ if (-not $NoZeal) {
     }
     Remove-Item -LiteralPath $tmpAsi -Force -ErrorAction SilentlyContinue
     Write-Host "Zeal.asi installed to $EqDir." -ForegroundColor Green
+    $play = Write-PlayLauncher -EqFolder $EqDir
+    if ($play) {
+      Write-Host "Play shortcut created: $PlayShortcutName" -ForegroundColor Green
+      Write-Host "  Launch the game with it and the meter runs only while you play."
+    }
   }
 }
 
