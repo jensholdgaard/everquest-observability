@@ -25,6 +25,7 @@ spec:
           labelName: everquest_group_leader
           matchers:
           - everquest_group_member
+      defaultValue: $__all
   - kind: ListVariable
     spec:
       name: zone
@@ -39,6 +40,7 @@ spec:
           labelName: everquest_zone_name
           matchers:
           - everquest_combat_damage_total
+      defaultValue: $__all
   - kind: ListVariable
     spec:
       name: player
@@ -53,6 +55,7 @@ spec:
           labelName: everquest_combat_source
           matchers:
           - everquest_combat_damage_total{everquest_combat_source_type="player"}
+      defaultValue: $__all
   - kind: ListVariable
     spec:
       name: character
@@ -67,6 +70,7 @@ spec:
           labelName: everquest_combat_source
           matchers:
           - everquest_combat_heal_total{everquest_combat_direction="incoming"}
+      defaultValue: $__all
   - kind: TextVariable
     spec:
       name: fight
@@ -88,6 +92,7 @@ spec:
           labelName: everquest_combat_target
           matchers:
           - everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player"}
+      defaultValue: $__all
   panels:
     stat_group_dps:
       kind: Panel
