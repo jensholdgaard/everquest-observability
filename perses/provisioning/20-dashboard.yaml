@@ -33,7 +33,7 @@ spec:
         name: Zone
       allowAllValue: true
       allowMultiple: false
-      customAllValue: .+
+      customAllValue: .*
       plugin:
         kind: PrometheusLabelValuesVariable
         spec:
@@ -48,7 +48,7 @@ spec:
         name: Player
       allowAllValue: true
       allowMultiple: true
-      customAllValue: .+
+      customAllValue: .*
       plugin:
         kind: PrometheusLabelValuesVariable
         spec:
@@ -63,7 +63,7 @@ spec:
         name: Character (tank)
       allowAllValue: true
       allowMultiple: false
-      customAllValue: .+
+      customAllValue: .*
       plugin:
         kind: PrometheusLabelValuesVariable
         spec:
@@ -85,7 +85,7 @@ spec:
         name: Target (mob)
       allowAllValue: true
       allowMultiple: false
-      customAllValue: .+
+      customAllValue: .*
       plugin:
         kind: PrometheusLabelValuesVariable
         spec:
@@ -557,10 +557,9 @@ spec:
       spec:
         display:
           name: Collector last check-in (minutes ago)
-          description: 'One row per member who has ever reported. A climbing number means their collector is down or their
-            machine is off - not that they are idle.
-
-            '
+          description: "One row per member who has ever reported. A climbing number means their collector is down or their\
+            \ machine is off - not that they are idle.\n Looks back 6 hours: a collector silent longer than that has no row\
+            \ at all, which is itself the answer."
         plugin:
           kind: TimeSeriesTable
           spec: {}
@@ -570,14 +569,14 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: (time() - max by (everquest_reporter) (max_over_time(timestamp(otelcol_process_uptime_seconds_total)[7d:5m])))
+                query: (time() - max by (everquest_reporter) (max_over_time(timestamp(otelcol_process_uptime_seconds_total)[6h:5m])))
                   / 60
                 seriesNameFormat: '{{everquest_reporter}}'
     client_builds:
       kind: Panel
       spec:
         display:
-          name: Client build per member (last 7d)
+          name: Client build per member (last 24h)
           description: Zeal reports its release plus the build hash as service.version, so a feature that is missing for one
             member can be checked against the build they are actually running rather than the one they were asked to install.
         plugin:
@@ -589,7 +588,7 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: count by (everquest_reporter, service_version) (count_over_time(everquest_combat_damage_total[7d]))
+                query: count by (everquest_reporter, service_version) (count_over_time(everquest_combat_damage_total[24h]))
                 seriesNameFormat: '{{everquest_reporter}} - {{service_version}}'
     attack:
       kind: Panel
