@@ -251,6 +251,13 @@ if ($LASTEXITCODE -ne 0) { throw "The collector rejected the config:`n$validatio
 # a reasonable thing to refuse on someone else's machine. -NoAutostart writes a launcher instead, so
 # the collector only ever runs when you double-click it. (Zigzap.)
 if ($NoAutostart) {
+  # Also converts an existing autostart install: without this, re-running with -NoAutostart left the
+  # logon task registered and the collector kept starting itself, which is the opposite of the ask.
+  if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+    Stop-Collector
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Host "Removed the existing logon task - the collector now starts only when you start it." -ForegroundColor Yellow
+  }
   $bat = Write-Launcher
   Write-Host "No autostart configured. Start the collector yourself when you want to play:" -ForegroundColor Green
   Write-Host "  $bat"

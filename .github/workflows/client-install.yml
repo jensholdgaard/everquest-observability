@@ -190,6 +190,20 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Members who already installed with autostart must be able to turn it off by re-running.
+      - name: -NoAutostart removes an existing logon task
+        shell: pwsh
+        run: |
+          ./client/windows/install.ps1 -Token ci-dummy-token -NoZeal `
+            -Endpoint http://127.0.0.1:9/v1/metrics -TracesEndpoint http://127.0.0.1:9/v1/traces
+          if (-not (Get-ScheduledTask EQ-OTel-Collector -EA SilentlyContinue)) { throw "setup: task missing" }
+          ./client/windows/install.ps1 -Token ci-dummy-token -NoZeal -NoAutostart
+          if (Get-ScheduledTask EQ-OTel-Collector -EA SilentlyContinue) {
+            throw "-NoAutostart left the logon task in place"
+          }
+          Write-Host "-NoAutostart converted an autostart install to manual."
+          ./client/windows/install.ps1 -Uninstall
+
       - name: Install without autostart
         shell: pwsh
         run: |
