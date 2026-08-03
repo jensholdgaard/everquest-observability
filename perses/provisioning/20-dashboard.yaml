@@ -1,5 +1,5 @@
-# One page, with each section collapsible: sections other than damage stay closed so the page
-# opens on what a raid looks at most, without hiding anything behind navigation.
+# One page, with each section collapsible. NOTE: Perses queries collapsed panels too, so every
+# viewer pays for all panels on every refresh - keep the refresh interval modest.
 apiVersion: perses.dev/v1alpha1
 kind: Dashboard
 metadata:
@@ -9,7 +9,7 @@ spec:
   display:
     name: EverQuest
   duration: 1h
-  refreshInterval: 30s
+  refreshInterval: 1m
   variables:
   - kind: ListVariable
     spec:
@@ -99,7 +99,8 @@ spec:
       spec:
         display:
           name: Group DPS
-          description: Filtered by the Target selector, so this reads as DPS on that mob.
+          description: 'Filtered by the Target selector, so this reads as DPS on that mob. Deduplicated: if several clients
+            report the same attacker, the most complete single report is used rather than summing them.'
         plugin:
           kind: StatChart
           spec:
@@ -113,8 +114,9 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: sum(rate(everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player",
-                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player", everquest_combat_target=~"$target"}[60s]))
+                query: sum(max by (everquest_combat_source) (sum by (everquest_combat_source, service_instance_id) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                  everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player",
+                  everquest_combat_target=~"$target"}[60s]))))
     stat_top_dps:
       kind: Panel
       spec:
@@ -133,9 +135,9 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: max(sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                query: max(max by (everquest_combat_source) (sum by (everquest_combat_source, service_instance_id) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
                   everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player",
-                  everquest_combat_target=~"$target"}[60s])))
+                  everquest_combat_target=~"$target"}[60s]))))
     stat_taken:
       kind: Panel
       spec:
@@ -161,7 +163,8 @@ spec:
       spec:
         display:
           name: DPS meter
-          description: With a target selected, this is per-player DPS on that mob.
+          description: 'With a target selected, this is per-player DPS on that mob. Deduplicated: if several clients report
+            the same attacker, the most complete single report is used rather than summing them.'
         plugin:
           kind: BarChart
           spec:
@@ -177,9 +180,9 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: topk(20, sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                query: topk(20, max by (everquest_combat_source) (sum by (everquest_combat_source, service_instance_id) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
                   everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player",
-                  everquest_combat_target=~"$target"}[60s])) > 0)
+                  everquest_combat_target=~"$target"}[60s]))) > 0)
                 seriesNameFormat: '{{everquest_combat_source}}'
     dps_table:
       kind: Panel
@@ -195,9 +198,9 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: sort_desc(sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                query: sort_desc(max by (everquest_combat_source) (sum by (everquest_combat_source, service_instance_id) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
                   everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player",
-                  everquest_combat_target=~"$target"}[60s])) > 0)
+                  everquest_combat_target=~"$target"}[60s]))) > 0)
                 seriesNameFormat: '{{everquest_combat_source}}'
     dps_history:
       kind: Panel
@@ -215,9 +218,9 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                query: max by (everquest_combat_source) (sum by (everquest_combat_source, service_instance_id) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
                   everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player",
-                  everquest_combat_target=~"$target"}[30s])) > 0
+                  everquest_combat_target=~"$target"}[30s]))) > 0
                 seriesNameFormat: '{{everquest_combat_source}}'
     damage_mix:
       kind: Panel
@@ -241,9 +244,10 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: sum by (everquest_combat_damage_type) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                query: sum by (everquest_combat_damage_type) (max by (everquest_combat_source, everquest_combat_damage_type)
+                  (sum by (everquest_combat_source, everquest_combat_damage_type, service_instance_id) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
                   everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player",
-                  everquest_combat_target=~"$target"}[60s])) > 0
+                  everquest_combat_target=~"$target"}[60s])))) > 0
                 seriesNameFormat: '{{everquest_combat_damage_type}}'
     dps_by_target:
       kind: Panel
@@ -265,9 +269,10 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: topk(15, sum by (everquest_combat_target) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
-                  everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player"}[60s]))
-                  > 0)
+                query: topk(15, sum by (everquest_combat_target) (max by (everquest_combat_source, everquest_combat_target)
+                  (sum by (everquest_combat_source, everquest_combat_target, service_instance_id) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                  everquest_combat_source_type="player", everquest_group_leader=~"$group", everquest_zone_name=~"$zone", everquest_combat_source=~"$player",
+                  everquest_combat_target=~"$target"}[60s])))) > 0)
                 seriesNameFormat: '{{everquest_combat_target}}'
     stat_hps:
       kind: Panel
@@ -451,7 +456,8 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: (time() - max by (everquest_raid_target) (max_over_time(everquest_raid_kill_timestamp[7d]))) / 3600
+                query: (time() - max by (everquest_raid_target) (max_over_time(everquest_raid_kill_timestamp_seconds[7d])))
+                  / 3600
                 seriesNameFormat: '{{everquest_raid_target}}'
     raid_lockouts:
       kind: Panel
@@ -468,8 +474,8 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: (max by (everquest_raid_target) (max_over_time(everquest_raid_lockout_expiry[7d])) - time()) / 3600
-                  > 0
+                query: (max by (everquest_raid_target) (max_over_time(everquest_raid_lockout_expiry_seconds[7d])) - time())
+                  / 3600 > 0
                 seriesNameFormat: '{{everquest_raid_target}}'
     stat_group_size:
       kind: Panel
