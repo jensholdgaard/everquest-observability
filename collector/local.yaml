@@ -15,6 +15,20 @@ receivers:
         endpoint: 127.0.0.1:4318
 
 processors:
+  # Zeal's SDK-backed metrics path exports delta temporality on purpose: under cumulative the OTel
+  # SDK never reclaims aggregation state, so every mob fought in a session stays resident and is
+  # re-exported every cycle until it hits the SDK's 2000-attribute-set cap and starts folding
+  # everything into otel.metric.overflow (dropping target and source). Delta lets the SDK reset each
+  # cycle; this processor rebuilds the cumulative series Prometheus wants, and max_stale does the
+  # idle-series eviction that the game client would otherwise have to do by hand.
+  #
+  # Cumulative metrics (everything the hand-rolled exporter sends) pass through untouched.
+  deltatocumulative:
+    # Matches kSeriesIdleMs in otlp_exporter.h (10 min). These two are the same decision - when to
+    # stop reporting an idle fight - and when they disagreed the SDK path dropped series the
+    # hand-rolled path was still exporting, which reads as missing data rather than as a tuning
+    # difference. If one changes, change the other.
+    max_stale: 10m
   batch:
     timeout: 5s
   memory_limiter:
@@ -58,7 +72,7 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, deltatocumulative, batch]
       exporters: [otlphttp/metrics]
     traces:
       receivers: [otlp]
