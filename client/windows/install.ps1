@@ -229,6 +229,14 @@ receivers:
       http:
         endpoint: 127.0.0.1:4318
 processors:
+  # Zeal exports counters with delta temporality on purpose. Under cumulative the OpenTelemetry SDK
+  # keeps aggregation state for every attribute set it has ever seen and never reclaims it, so a long
+  # session walks toward its 2000-set cap and then folds everything past it into a single overflow
+  # series - dropping the target and source labels the dashboard filters on. Delta lets the SDK reset
+  # each cycle; this rebuilds the cumulative series Prometheus wants, and max_stale stops reporting a
+  # fight once it has been idle that long (matching kSeriesIdleMs in Zeal).
+  deltatocumulative:
+    max_stale: 10m
   batch:
     timeout: 5s
   memory_limiter:
@@ -267,7 +275,7 @@ service:
     # below, then run the collector and watch the console.
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, deltatocumulative, batch]
       exporters: [otlphttp/metrics]
     traces:
       receivers: [otlp]
