@@ -94,13 +94,64 @@ spec:
           - everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player"}
       defaultValue: $__all
   panels:
+    stat_metric_overflow:
+      kind: Panel
+      spec:
+        display:
+          name: Data loss (overflow)
+          description: 'Should always be 0. The OpenTelemetry SDK tracks at most 2000 distinct label
+            combinations per metric; past that it lumps further measurements into one bucket and discards
+            their labels. Totals stay correct, but every panel that filters by target, source or damage
+            type silently stops counting them - so this is the one number that says whether the rest of
+            this dashboard can be trusted. If it is above 0, someone has fought more distinct mobs in one
+            session than the client can track, and they should relog to reset it.'
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(count by (instance) ({otel_metric_overflow="true"})) or vector(0)
+    stat_series_headroom:
+      kind: Panel
+      spec:
+        display:
+          name: Label combinations used
+          description: 'Distinct label combinations the busiest client is tracking, against the SDK cap of
+            2000. Roughly eight per distinct mob fought, so this climbs through a session and resets when
+            the client restarts. Watch it approach the cap rather than waiting for data loss to appear.'
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: max(count by (instance) (everquest_combat_damage_total))
     stat_group_dps:
       kind: Panel
       spec:
         display:
-          name: Group DPS
-          description: 'Filtered by the Target selector, so this reads as DPS on that mob. Deduplicated: if several clients
-            report the same attacker, the most complete single report is used rather than summing them.'
+          name: Group DPS (live, 60s)
+          description: 'A rolling 60-second rate - damage right now, not a fight result. This is NOT the DPS or
+            SDPS column in eqlogparse: those divide a fight''s damage by the attacker''s engaged time or by the
+            fight''s duration, while this divides by a fixed 60s window. It therefore reads higher than a parse
+            during a burn and lower across a pull with pauses. Use it to watch a fight happening; use the
+            per-fight panels to compare against a parse. Deduplicated: if several clients report the same
+            attacker, the most complete single report is used rather than summing them.'
         plugin:
           kind: StatChart
           spec:
@@ -121,7 +172,7 @@ spec:
       kind: Panel
       spec:
         display:
-          name: Best player DPS
+          name: Best player DPS (live, 60s)
         plugin:
           kind: StatChart
           spec:
@@ -965,3 +1016,15 @@ spec:
         height: 6
         content:
           $ref: '#/spec/panels/client_builds'
+      - x: 0
+        y: 12
+        width: 6
+        height: 6
+        content:
+          $ref: '#/spec/panels/stat_metric_overflow'
+      - x: 6
+        y: 12
+        width: 6
+        height: 6
+        content:
+          $ref: '#/spec/panels/stat_series_headroom'
