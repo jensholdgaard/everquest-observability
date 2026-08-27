@@ -9,7 +9,7 @@ spec:
   display:
     name: EverQuest
   duration: 1h
-  refreshInterval: 1m
+  refreshInterval: 10s
   variables:
   - kind: ListVariable
     spec:
@@ -348,7 +348,7 @@ spec:
               kind: PrometheusTimeSeriesQuery
               spec:
                 query: sum(rate(everquest_combat_heal_total{everquest_combat_direction="incoming", everquest_group_leader=~"$group",
-                  everquest_zone_name=~"$zone"}[5m]))
+                  everquest_zone_name=~"$zone"}[60s]))
     heal_bars:
       kind: Panel
       spec:
@@ -371,7 +371,7 @@ spec:
               kind: PrometheusTimeSeriesQuery
               spec:
                 query: topk(20, sum by (everquest_combat_source) (rate(everquest_combat_heal_total{everquest_combat_direction="incoming",
-                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[5m])) > 0)
+                  everquest_group_leader=~"$group", everquest_zone_name=~"$zone"}[60s])) > 0)
                 seriesNameFormat: '{{everquest_combat_source}}'
     heal_history:
       kind: Panel
@@ -479,7 +479,7 @@ spec:
               kind: PrometheusTimeSeriesQuery
               spec:
                 query: sum(rate(everquest_combat_heal_total{everquest_combat_direction="incoming", everquest_combat_source=~"$character",
-                  everquest_group_leader=~"$group"}[5m]))
+                  everquest_group_leader=~"$group"}[60s]))
                 seriesNameFormat: healing received
         - kind: TimeSeriesQuery
           spec:
@@ -487,7 +487,7 @@ spec:
               kind: PrometheusTimeSeriesQuery
               spec:
                 query: sum(rate(everquest_combat_damage_total{everquest_combat_direction="incoming", everquest_combat_target=~"$character",
-                  everquest_group_leader=~"$group"}[5m]))
+                  everquest_group_leader=~"$group"}[60s]))
                 seriesNameFormat: damage taken
     raid_tod:
       kind: Panel
