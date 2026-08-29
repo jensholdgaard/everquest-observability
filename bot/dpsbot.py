@@ -19,18 +19,43 @@ PROVISION = pathlib.Path("/etc/perses/provisioning")
 DASHBOARD = "https://dps.nocturnal-guild.de"
 NAME_RE = re.compile(r"^[a-z0-9._]{2,32}$")  # post-2023 Discord usernames
 
-DM_TEMPLATE = """Your personal DPS meter token (keep it private):
+DM_TEMPLATE = """Your personal DPS meter token — **keep it private, it is yours alone**:
 ```
 {token}
 ```
-**Windows setup — open PowerShell (no admin) and paste this one line:**
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/jensholdgaard/everquest-observability/main/client/windows/install.ps1))) -Token {token}
+**Setup is three lines typed in game.** No installer, no collector, nothing running in the
+background any more.
+
+**1.** Get the latest Zeal: https://github.com/jensholdgaard/NewZeal/releases/tag/otlp-sdk-preview
+Download `Zeal.asi` and drop it in your EverQuest folder, replacing the one there.
+(Keep a copy of your old one first. It replaces that single file — you still need your normal
+Zeal install.)
+
+**2.** Start EverQuest, then paste these one at a time:
 ```
-It finds your EverQuest folder by itself. Then in game: `/otlp on`
-(That line contains your token — don't paste it in a public channel. It also stays in your
-PowerShell history; `-Uninstall` on the same script removes everything later.)
-Dashboard: {dashboard} (log in with Discord — your access is already set up)\nYou also get a personal project to save your own dashboards in; the guild ones stay read-only.
+/otlp endpoint https://dps.nocturnal-guild.de/otlp
+/otlp token {token}
+/otlp on
+```
+
+**3.** Check it worked:
+```
+/otlp status
+```
+You want `token: set (ends ...)` and `last HTTP status: 200` with the payload count going up.
+If it says `401`, tell an officer — that is the server refusing the token, not you doing it wrong.
+
+Your token is stored encrypted and tied to this Windows account, so the file it lives in is
+useless to anyone else. Still: **do not paste that `/otlp token` line in a public channel**, and
+note that chat is written to your `eqlog` file when logging is on.
+
+Already had the old collector installed? You can uninstall it — it is not needed any more:
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/jensholdgaard/everquest-observability/main/client/windows/install.ps1))) -Uninstall
+```
+
+Dashboard: {dashboard} (log in with Discord — your access is already set up)
+You also get a personal project to save your own dashboards in; the guild ones stay read-only.
 Lost the token? Ask an officer to `/dpsrevoke` you, then run `/dpstoken` again."""
 
 
