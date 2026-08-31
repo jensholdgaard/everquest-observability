@@ -182,30 +182,40 @@ ${PERSES_DOMAIN} {
 		file_server
 	}
 
-	# The guild site (staged here until it has its own name), its data, and a
-	# read-only Prometheus proxy for its charts — all behind the Perses login.
-	# forward_auth asks Perses who the viewer is, with the viewer's own cookie.
-	# The page shell is public (it holds nothing); its data is not, and the
-	# page turns a 401 on the data into a sign-in prompt itself.
-	handle_path /site/* {
-		root * /var/www/site
-		file_server
+	# Perses lives under /perses (api_prefix in perses.yaml). The Discord app
+	# still has the old callback URL registered, so that one path is kept
+	# reachable and rewritten onto the prefix — no Developer Portal change.
+	handle /api/auth/providers/oauth/discord/callback* {
+		rewrite * /perses{uri}
+		reverse_proxy 127.0.0.1:8080
 	}
+	handle /perses* {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	# The guild site is the front door. The page shell is public (it holds
+	# nothing); its data and its chart queries are behind the Perses login:
+	# forward_auth asks Perses who the viewer is, with the viewer's own cookie,
+	# and the page turns a 401 into a sign-in prompt that returns here.
 	handle_path /data/* {
 		forward_auth 127.0.0.1:8080 {
-			uri /api/v1/user/whoami
+			uri /perses/api/v1/user/whoami
 		}
 		root * /var/www/roster
 		file_server
 	}
 	handle_path /prom/* {
 		forward_auth 127.0.0.1:8080 {
-			uri /api/v1/user/whoami
+			uri /perses/api/v1/user/whoami
 		}
 		reverse_proxy 127.0.0.1:9090
 	}
-	# Perses dashboard.
-	reverse_proxy 127.0.0.1:8080
+	redir /site /
+	redir /site/* / 301
+	handle {
+		root * /var/www/site
+		file_server
+	}
 }
 CADDY
 
