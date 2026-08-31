@@ -182,6 +182,34 @@ ${PERSES_DOMAIN} {
 		file_server
 	}
 
+	# The guild site (staged here until it has its own name), its data, and a
+	# read-only Prometheus proxy for its charts — all behind the Perses login.
+	# forward_auth asks Perses who the viewer is, with the viewer's own cookie.
+	handle_path /site/* {
+		forward_auth 127.0.0.1:8080 {
+			uri /api/v1/users/me
+		}
+		root * /var/www/site
+		file_server
+	}
+	handle_path /data/* {
+		forward_auth 127.0.0.1:8080 {
+			uri /api/v1/users/me
+		}
+		root * /var/www/roster
+		file_server
+	}
+	handle_path /prom/* {
+		forward_auth 127.0.0.1:8080 {
+			uri /api/v1/users/me
+		}
+		reverse_proxy 127.0.0.1:9090
+	}
+	# Not signed in: send the visitor to the Perses login instead of a bare 401.
+	handle_errors 401 {
+		redir / 302
+	}
+
 	# Perses dashboard.
 	reverse_proxy 127.0.0.1:8080
 }
