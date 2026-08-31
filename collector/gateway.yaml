@@ -43,6 +43,12 @@ exporters:
     traces_endpoint: http://127.0.0.1:14318/v1/traces
   # Logs are not stored. Clients don't forward them (chat contains private conversation); this
   # pipeline exists only so a stray log post gets a clean 200 instead of an error.
+  # Logs -> on-box Ourios. Member clients' events (character profiles) and the
+  # bot's own log records, one tenant.
+  otlphttp/ourios:
+    logs_endpoint: http://127.0.0.1:4318/v1/logs
+    headers:
+      x-ourios-tenant: nocturnal
   debug:
     verbosity: basic
 
@@ -60,4 +66,4 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, attributes/reporter, batch]
-      exporters: [debug]   # TODO: otlphttp -> Ourios
+      exporters: [otlphttp/ourios]

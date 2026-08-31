@@ -236,13 +236,11 @@ ${PERSES_DOMAIN} {
 	}
 	redir /site /
 	redir /site/* / 301
+	# The site is rendered by the bot from its live ledger snapshot (Maud
+	# templates); /assets/* is the Perses island the puller unpacks for it.
 	handle {
 		import wall
-		root * /var/www/site
-		# The page changes often and is tiny: make browsers revalidate it
-		# every time, so nobody runs a week-old copy against a moved API.
-		header Cache-Control "no-cache, must-revalidate"
-		file_server
+		reverse_proxy 127.0.0.1:8090
 	}
 }
 CADDY
