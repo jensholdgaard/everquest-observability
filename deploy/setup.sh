@@ -175,6 +175,13 @@ ${PERSES_DOMAIN} {
 		}
 	}
 
+	# The guild roster page: the bot writes /var/www/roster/data.json from its
+	# ledger; the page is the roster repo's index.html with one constant changed.
+	handle_path /roster/* {
+		root * /var/www/roster
+		file_server
+	}
+
 	# Perses dashboard.
 	reverse_proxy 127.0.0.1:8080
 }
