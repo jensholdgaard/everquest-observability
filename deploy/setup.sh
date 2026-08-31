@@ -193,14 +193,14 @@ ${PERSES_DOMAIN} {
 	}
 	handle_path /data/* {
 		forward_auth 127.0.0.1:8080 {
-			uri /api/v1/users/me
+			uri /api/v1/user/whoami
 		}
 		root * /var/www/roster
 		file_server
 	}
 	handle_path /prom/* {
 		forward_auth 127.0.0.1:8080 {
-			uri /api/v1/users/me
+			uri /api/v1/user/whoami
 		}
 		reverse_proxy 127.0.0.1:9090
 	}
