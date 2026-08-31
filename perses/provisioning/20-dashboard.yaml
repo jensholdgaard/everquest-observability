@@ -71,6 +71,21 @@ spec:
           matchers:
           - everquest_combat_heal_total{everquest_combat_direction="incoming"}
       defaultValue: $__all
+  - kind: ListVariable
+    spec:
+      name: raid
+      display:
+        name: Raid (from the DKP ledger)
+        description: A raid night as the DKP bot recorded it. The bot exports one series per raid while it runs, so picking one scopes the Raid row below to exactly /startraid-to-/endraid.
+      allowAllValue: false
+      allowMultiple: false
+      plugin:
+        kind: PrometheusLabelValuesVariable
+        spec:
+          labelName: nocturnal_raid_id
+          matchers:
+          - nocturnal_raid_active
+      sort: alphabetical-desc
   - kind: TextVariable
     spec:
       name: fight
@@ -94,6 +109,71 @@ spec:
           - everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player"}
       defaultValue: $__all
   panels:
+    raid_damage_by_character:
+      kind: Panel
+      spec:
+        display:
+          name: Damage in this raid, by character
+          description: 'Total outgoing damage while the selected raid was running — scoped by the bot''s raid series, not by the time picker. Only characters running the meter appear.'
+        plugin:
+          kind: BarChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              shortValues: true
+            sort: desc
+            mode: value
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sort_desc(sum by (everquest_combat_source) (sum_over_time((sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",everquest_combat_source_type="player"}[2m]) and on() (nocturnal_raid_active{nocturnal_raid_id="$raid"} == 1)))[1d:1m]) * 60))
+                seriesNameFormat: '{{everquest_combat_source}}'
+    raid_dps_timeline:
+      kind: Panel
+      spec:
+        display:
+          name: DPS through the raid
+          description: Per-character DPS, present only while the selected raid was running.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: right
+            yAxis:
+              format:
+                unit: decimal
+                shortValues: true
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",everquest_combat_source_type="player"}[2m])) and on() (nocturnal_raid_active{nocturnal_raid_id="$raid"} == 1)
+                seriesNameFormat: '{{everquest_combat_source}}'
+    raid_headcount:
+      kind: Panel
+      spec:
+        display:
+          name: Raid headcount
+          description: Players present at each DKP tick of the selected raid, from the bot.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: max(nocturnal_raid_attendance) and on() (nocturnal_raid_active{nocturnal_raid_id="$raid"} == 1)
+                seriesNameFormat: present
     stat_metric_overflow:
       kind: Panel
       spec:
@@ -779,6 +859,31 @@ spec:
                   - max by (everquest_raid_target) (max_over_time(everquest_raid_kill_timestamp_seconds[14d]))), 0) > 0
                 seriesNameFormat: '{{everquest_raid_target}}'
   layouts:
+  - kind: Grid
+    spec:
+      display:
+        title: A raid night (pick one above)
+        collapse:
+          open: true
+      items:
+      - x: 0
+        y: 0
+        width: 12
+        height: 9
+        content:
+          $ref: '#/spec/panels/raid_damage_by_character'
+      - x: 12
+        y: 0
+        width: 12
+        height: 9
+        content:
+          $ref: '#/spec/panels/raid_dps_timeline'
+      - x: 0
+        y: 9
+        width: 24
+        height: 5
+        content:
+          $ref: '#/spec/panels/raid_headcount'
   - kind: Grid
     spec:
       display:
