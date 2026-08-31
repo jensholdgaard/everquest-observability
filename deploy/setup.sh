@@ -157,6 +157,31 @@ cp -f "$REPO_DIR"/perses/provisioning/*.yaml /etc/perses/provisioning/
 # Caddyfile: Perses dashboard + OTLP ingest. Auth happens at the gateway collector (per-member
 # bearer tokens in /etc/eq-otel/tokens.txt), Caddy only terminates TLS and routes.
 cat > /etc/caddy/Caddyfile <<CADDY
+# The login wall. forward_auth written out: ask Perses who the viewer is with
+# the viewer's own cookies; on 2xx carry on to the real handler, on anything
+# else send the browser through the Discord login and back to the page it
+# asked for. Data and chart queries are fetched by the page, so those get 401.
+(wall) {
+	reverse_proxy 127.0.0.1:8080 {
+		method GET
+		rewrite /perses/api/v1/user/whoami
+		header_up X-Forwarded-Method {method}
+		header_up X-Forwarded-Uri {uri}
+		@ok status 2xx
+		handle_response @ok {
+		}
+		@nope status 401 403
+		handle_response @nope {
+			redir * "/perses/api/auth/providers/oauth/discord/login?rd={http.request.orig_uri}" 302
+		}
+	}
+}
+(wall_xhr) {
+	forward_auth 127.0.0.1:8080 {
+		uri /perses/api/v1/user/whoami
+	}
+}
+
 ${PERSES_DOMAIN} {
 	encode zstd gzip
 
@@ -177,11 +202,6 @@ ${PERSES_DOMAIN} {
 
 	# The guild roster page: the bot writes /var/www/roster/data.json from its
 	# ledger; the page is the roster repo's index.html with one constant changed.
-	handle_path /roster/* {
-		root * /var/www/roster
-		file_server
-	}
-
 	# Perses lives under /perses (api_prefix in perses.yaml). The Discord app
 	# still has the old callback URL registered, so that one path is kept
 	# reachable and rewritten onto the prefix — no Developer Portal change.
@@ -193,26 +213,30 @@ ${PERSES_DOMAIN} {
 		reverse_proxy 127.0.0.1:8080
 	}
 
-	# The guild site is the front door. The page shell is public (it holds
-	# nothing); its data and its chart queries are behind the Perses login:
-	# forward_auth asks Perses who the viewer is, with the viewer's own cookie,
-	# and the page turns a 401 into a sign-in prompt that returns here.
+	# Everything else is behind the login (see the wall snippets above).
 	handle_path /data/* {
-		forward_auth 127.0.0.1:8080 {
-			uri /perses/api/v1/user/whoami
-		}
+		import wall_xhr
 		root * /var/www/roster
 		file_server
 	}
 	handle_path /prom/* {
-		forward_auth 127.0.0.1:8080 {
-			uri /perses/api/v1/user/whoami
-		}
+		import wall_xhr
 		reverse_proxy 127.0.0.1:9090
+	}
+	handle /roster/data.json {
+		import wall_xhr
+		root * /var/www
+		file_server
+	}
+	handle_path /roster/* {
+		import wall
+		root * /var/www/roster
+		file_server
 	}
 	redir /site /
 	redir /site/* / 301
 	handle {
+		import wall
 		root * /var/www/site
 		file_server
 	}
