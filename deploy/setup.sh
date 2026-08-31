@@ -231,6 +231,7 @@ ${PERSES_DOMAIN} {
 	handle_path /roster/* {
 		import wall
 		root * /var/www/roster
+		header Cache-Control "no-cache, must-revalidate"
 		file_server
 	}
 	redir /site /
@@ -238,6 +239,9 @@ ${PERSES_DOMAIN} {
 	handle {
 		import wall
 		root * /var/www/site
+		# The page changes often and is tiny: make browsers revalidate it
+		# every time, so nobody runs a week-old copy against a moved API.
+		header Cache-Control "no-cache, must-revalidate"
 		file_server
 	}
 }
