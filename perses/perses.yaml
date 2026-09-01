@@ -28,6 +28,12 @@ security:
   # role via a RoleBinding (see deploy/tokens.sh and bot/dpsbot.py).
 
   authentication:
+    # Session length. The site's login wall (Caddy forward_auth -> whoami) checks the access token on
+    # every page load and has no way to refresh it silently the way Perses's own UI does, so the
+    # access token *is* the session: with the default 15m every member was bounced back through
+    # Discord every quarter hour. A week, refreshable for a month.
+    access_token_ttl: 168h
+    refresh_token_ttl: 720h
     # Sign-up must stay open: this Perses version cannot provision an OAuth-only user (it demands a
     # native password, and adding one breaks the Discord login sync). Logging in creates the account
     # but grants nothing — access comes from a RoleBinding, provisioned per member by the bot.
