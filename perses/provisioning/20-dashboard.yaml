@@ -134,6 +134,7 @@ spec:
               kind: PrometheusTimeSeriesQuery
               spec:
                 query: sort_desc(sum by (everquest_combat_source) (sum_over_time((sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",everquest_combat_source_type="player"}[2m]) and on() ({__name__=~"nocturnal_raid_active(_ratio)?", nocturnal_raid_id="$raid"} == 1)))[1d:1m]) * 60))
+                minStep: 15m
                 seriesNameFormat: '{{everquest_combat_source}}'
     raid_dps_timeline:
       kind: Panel
@@ -157,6 +158,7 @@ spec:
               kind: PrometheusTimeSeriesQuery
               spec:
                 query: sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",everquest_combat_source_type="player"}[2m])) and on() ({__name__=~"nocturnal_raid_active(_ratio)?", nocturnal_raid_id="$raid"} == 1)
+                minStep: 1m
                 seriesNameFormat: '{{everquest_combat_source}}'
     raid_headcount:
       kind: Panel
@@ -176,6 +178,7 @@ spec:
               kind: PrometheusTimeSeriesQuery
               spec:
                 query: max(nocturnal_raid_attendance) and on() ({__name__=~"nocturnal_raid_active(_ratio)?", nocturnal_raid_id="$raid"} == 1)
+                minStep: 1m
                 seriesNameFormat: present
     stat_metric_overflow:
       kind: Panel
