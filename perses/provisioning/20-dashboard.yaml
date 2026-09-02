@@ -84,7 +84,7 @@ spec:
         spec:
           labelName: nocturnal_raid_id
           matchers:
-          - {__name__=~"nocturnal_raid_active(_ratio)?"}  # _ratio: raids before 2026-09-01 (unit was "1"; Prometheus appended the suffix)
+          - '{__name__=~"nocturnal_raid_active(_ratio)?"}'  # _ratio: raids before 2026-09-01 (unit was "1"; Prometheus appended the suffix)
       sort: alphabetical-desc
   - kind: TextVariable
     spec:
