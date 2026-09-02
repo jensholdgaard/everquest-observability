@@ -84,7 +84,7 @@ spec:
         spec:
           labelName: nocturnal_raid_id
           matchers:
-          - nocturnal_raid_active
+          - {__name__=~"nocturnal_raid_active(_ratio)?"}  # _ratio: raids before 2026-09-01 (unit was "1"; Prometheus appended the suffix)
       sort: alphabetical-desc
   - kind: TextVariable
     spec:
@@ -130,7 +130,7 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: sort_desc(sum by (everquest_combat_source) (sum_over_time((sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",everquest_combat_source_type="player"}[2m]) and on() (nocturnal_raid_active{nocturnal_raid_id="$raid"} == 1)))[1d:1m]) * 60))
+                query: sort_desc(sum by (everquest_combat_source) (sum_over_time((sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",everquest_combat_source_type="player"}[2m]) and on() ({__name__=~"nocturnal_raid_active(_ratio)?", nocturnal_raid_id="$raid"} == 1)))[1d:1m]) * 60))
                 seriesNameFormat: '{{everquest_combat_source}}'
     raid_dps_timeline:
       kind: Panel
@@ -153,7 +153,7 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",everquest_combat_source_type="player"}[2m])) and on() (nocturnal_raid_active{nocturnal_raid_id="$raid"} == 1)
+                query: sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",everquest_combat_source_type="player"}[2m])) and on() ({__name__=~"nocturnal_raid_active(_ratio)?", nocturnal_raid_id="$raid"} == 1)
                 seriesNameFormat: '{{everquest_combat_source}}'
     raid_headcount:
       kind: Panel
@@ -172,7 +172,7 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: max(nocturnal_raid_attendance) and on() (nocturnal_raid_active{nocturnal_raid_id="$raid"} == 1)
+                query: max(nocturnal_raid_attendance) and on() ({__name__=~"nocturnal_raid_active(_ratio)?", nocturnal_raid_id="$raid"} == 1)
                 seriesNameFormat: present
     stat_metric_overflow:
       kind: Panel
