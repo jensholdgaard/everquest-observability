@@ -9,7 +9,10 @@ spec:
   display:
     name: EverQuest
   duration: 1h
-  refreshInterval: 5s
+  # 30s, not 5s: with ~67 panels whose 1h range queries take 5-7s each on this box, a 5s
+  # refresh cancelled every query before it finished (5,000 cancels per 10 min on 2026-09-02)
+  # and the board never converged. The live panels are 60s rates; 30s loses nothing.
+  refreshInterval: 30s
   variables:
   - kind: ListVariable
     spec:
