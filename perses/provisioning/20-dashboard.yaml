@@ -118,7 +118,7 @@ spec:
         display:
           name: Ledger writer (beats/s)
           description: 'The single-writer thread''s heartbeat. Zero while everything else looks alive is a dead writer:
-            every command fails and /readyz goes 503 (2026-09-03). Healthy is about 0.1/s.
+            every command fails and /readyz goes 503 (2026-09-03). Healthy is 0.05-0.1/s; dead is exactly 0.
 
             '
         plugin:
@@ -133,7 +133,7 @@ spec:
               - color: red
                 value: 0
               - color: green
-                value: 0.05
+                value: 0.02
         queries:
         - kind: TimeSeriesQuery
           spec:
