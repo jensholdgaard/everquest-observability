@@ -112,6 +112,87 @@ spec:
           - everquest_combat_damage_total{everquest_combat_direction="outgoing", everquest_combat_source_type="player"}
       defaultValue: $__all
   panels:
+    bot_writer_heartbeat:
+      kind: Panel
+      spec:
+        display:
+          name: Ledger writer (beats/s)
+          description: 'The single-writer thread''s heartbeat. Zero while everything else looks alive is a dead writer:
+            every command fails and /readyz goes 503 (2026-09-03). Healthy is about 0.1/s.
+
+            '
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 2
+            thresholds:
+              steps:
+              - color: red
+                value: 0
+              - color: green
+                value: 0.05
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(rate(nocturnal_ledger_writer_heartbeat_total[2m]))
+    bot_compaction_errors:
+      kind: Panel
+      spec:
+        display:
+          name: Compaction errors (24h)
+          description: Failed or panicked compaction runs. Any value here means the WAL is not draining; look at the store.compact spans.
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+            thresholds:
+              steps:
+              - color: green
+                value: 0
+              - color: red
+                value: 1
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(increase(nocturnal_compaction_runs_total{nocturnal_decision_outcome="error"}[24h])) or vector(0)
+    bot_command_failures:
+      kind: Panel
+      spec:
+        display:
+          name: Command failures (1h)
+          description: Interactions that ended in an internal error (not rejections, which are answered). Each one is a span with status ERROR in Jaeger.
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+            format:
+              unit: decimal
+              decimalPlaces: 0
+            thresholds:
+              steps:
+              - color: green
+                value: 0
+              - color: red
+                value: 1
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum(increase(nocturnal_commands_total{nocturnal_decision_outcome="error"}[1h])) or vector(0)
     raid_damage_by_character:
       kind: Panel
       spec:
@@ -865,6 +946,31 @@ spec:
                   - max by (everquest_raid_target) (max_over_time(everquest_raid_kill_timestamp_seconds[14d]))), 0) > 0
                 seriesNameFormat: '{{everquest_raid_target}}'
   layouts:
+  - kind: Grid
+    spec:
+      display:
+        title: Bot health
+        collapse:
+          open: true
+      items:
+      - x: 0
+        y: 0
+        width: 8
+        height: 4
+        content:
+          $ref: '#/spec/panels/bot_writer_heartbeat'
+      - x: 8
+        y: 0
+        width: 8
+        height: 4
+        content:
+          $ref: '#/spec/panels/bot_compaction_errors'
+      - x: 16
+        y: 0
+        width: 8
+        height: 4
+        content:
+          $ref: '#/spec/panels/bot_command_failures'
   - kind: Grid
     spec:
       display:
