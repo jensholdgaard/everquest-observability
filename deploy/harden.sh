@@ -66,6 +66,12 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 EOF
+# The VM receivers (journald, systemd, host_metrics) — see deploy/eq-gateway-receivers.conf.
+cat > /etc/systemd/system/eq-gateway.service.d/receivers.conf <<'EOF'
+[Service]
+SupplementaryGroups=systemd-journal
+StateDirectory=eq-gateway
+EOF
 
 mkharden eq-bot <<'EOF'
 [Service]

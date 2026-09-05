@@ -2,6 +2,11 @@
 # routes signals — metrics into the on-box Prometheus; logs to Ourios when it's ready.
 # Caddy terminates TLS and proxies /otlp/* here; this listener stays on localhost.
 extensions:
+  # Cursor for the journal reader: after a restart it resumes where it stopped
+  # instead of re-reading or skipping. The unit grants StateDirectory=eq-gateway.
+  file_storage/journald:
+    directory: /var/lib/eq-gateway/journald
+    create_directory: true
   bearertokenauth:
     # One token per line; anything after whitespace is a comment (we put the member name there).
     # Managed with deploy/tokens.sh — add/revoke without touching this config.
@@ -16,6 +21,98 @@ receivers:
           authenticator: bearertokenauth
         # Needed so the reporter identity Caddy injects reaches the processor below.
         include_metadata: true
+
+  # --- The VM itself (2026-09-06) — nothing here is scraped by Prometheus ---------------
+  # Box resources straight from /proc and /sys. The utilization gauges are what the
+  # dashboard shows; the cumulative *.time counters stay for rate() if ever needed.
+  host_metrics:
+    collection_interval: 30s
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization: { enabled: true }
+      memory:
+        metrics:
+          system.memory.utilization: { enabled: true }
+      load:
+      disk:
+      filesystem:
+        exclude_fs_types:
+          fs_types: [tmpfs, devtmpfs, squashfs, overlay, autofs, vfat]
+          match_type: strict
+        metrics:
+          system.filesystem.utilization: { enabled: true }
+      network:
+      paging:
+      processes:
+      system:
+  # Every unit's active state as 0/1 series, plus per-service CPU/memory from cgroups
+  # and the automatic-restart counter — read over D-Bus, alpha component.
+  systemd:
+    collection_interval: 30s
+    units:
+      - caddy.service
+      - perses.service
+      - prometheus.service
+      - jaeger.service
+      - ourios.service
+      - eq-gateway.service
+      - nocturnal.service
+      - nocturnal-watchdog.service
+      - fail2ban.service
+      - ssh.service
+      - unattended-upgrades.service
+    metrics:
+      systemd.service.restarts: { enabled: true }
+  # Prometheus itself only speaks Prometheus: the one scrape left on the box, done here.
+  prometheus/self:
+    config:
+      scrape_configs:
+        - job_name: prometheus
+          scrape_interval: 30s
+          static_configs:
+            - targets: ['127.0.0.1:9090']
+  # Service logs from the journal, allowlisted by unit: what a person would read when
+  # something is wrong. Everything else (ssh scans, the firewall, session scopes)
+  # was 97 % of the journal and is not shipped. The bot is excluded: its own
+  # records already arrive over OTLP with a trace context this line would lack.
+  journald/services:
+    storage: file_storage/journald
+    priority: info
+    units:
+      - caddy
+      - perses
+      - prometheus
+      - jaeger
+      - ourios
+      - eq-gateway
+      - nocturnal-deploy
+      - nocturnal-watchdog
+      - nocturnal-backup
+      - fail2ban
+      - ssh
+      - unattended-upgrades
+    operators: &journal_shape
+      # The receiver delivers every journal field as a map body. Keep the message as
+      # the body and the unit as an attribute, named as the systemd receiver names it.
+      - type: move
+        from: body._SYSTEMD_UNIT
+        to: attributes["systemd.unit.name"]
+        if: body._SYSTEMD_UNIT != nil
+      - type: move
+        from: body.SYSLOG_IDENTIFIER
+        to: attributes["log.syslog.identifier"]
+        if: body.SYSLOG_IDENTIFIER != nil
+      - type: move
+        from: body.MESSAGE
+        to: body
+  # systemd's own lines (unit start/stop/failure) and the kernel's, warnings and up:
+  # an OOM kill or a failed unit lands here, the boot chatter does not.
+  journald/system:
+    storage: file_storage/journald
+    priority: warning
+    identifiers: [systemd, kernel]
+    operators: *journal_shape
 
 processors:
   # Stamp the member identity the gateway *knows* (from the bearer token, mapped by Caddy) over
@@ -33,37 +130,88 @@ processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 256
+  # The VM's telemetry is one service to Prometheus (job/instance) and one tenant to
+  # Ourios; host.name comes from the OS. The systemd receiver's per-unit resource
+  # attribute is promoted to a label by Prometheus (prometheus.yml), not renamed here.
+  resource_detection:
+    detectors: [system]
+    system:
+      hostname_sources: [os]
+  resource/vm:
+    attributes:
+      - key: service.name
+        value: eq-perses
+        action: upsert
+      - key: service.instance.id
+        value: eq-perses
+        action: upsert
+  # Perses writes one access line per proxied panel query — a dashboard left open
+  # is 17k lines a day of "GET 200". Its warnings and errors still get through.
+  filter/journal:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'attributes["systemd.unit.name"] == "perses.service" and IsMatch(body, "level=info method=GET status=2")'
 
 exporters:
   # Metrics -> on-box Prometheus OTLP receiver.
-  otlphttp/prometheus:
+  otlp_http/prometheus:
     metrics_endpoint: http://127.0.0.1:9090/api/v1/otlp/v1/metrics
   # Traces -> on-box Jaeger (Badger storage, 72h). Queried from Perses; UI is localhost-only.
-  otlphttp/jaeger:
+  otlp_http/jaeger:
     traces_endpoint: http://127.0.0.1:14318/v1/traces
   # Logs are not stored. Clients don't forward them (chat contains private conversation); this
   # pipeline exists only so a stray log post gets a clean 200 instead of an error.
   # Logs -> on-box Ourios. Member clients' events (character profiles) and the
   # bot's own log records, one tenant.
-  otlphttp/ourios:
+  otlp_http/ourios:
     logs_endpoint: http://127.0.0.1:4318/v1/logs
     headers:
       x-ourios-tenant: nocturnal
+  # The VM's own logs under their own tenant, so the guild's data stays the guild's.
+  otlp_http/ourios_vm:
+    logs_endpoint: http://127.0.0.1:4318/v1/logs
+    headers:
+      x-ourios-tenant: eq-perses
   debug:
     verbosity: basic
 
 service:
-  extensions: [bearertokenauth]
+  extensions: [bearertokenauth, file_storage/journald]
+  # The collector's own metrics, pushed to Prometheus's OTLP receiver: no port 8888,
+  # no scrape. A fixed instance id, or every restart would be a new series set.
+  telemetry:
+    resource:
+      attributes:
+        - name: service.instance.id
+          value: eq-perses
+    metrics:
+      level: normal
+      readers:
+        - periodic:
+            interval: 30000
+            exporter:
+              otlp:
+                protocol: http/protobuf
+                endpoint: http://127.0.0.1:9090/api/v1/otlp/v1/metrics
   pipelines:
+    metrics/vm:
+      receivers: [host_metrics, systemd, prometheus/self]
+      processors: [memory_limiter, resource_detection, resource/vm, batch]
+      exporters: [otlp_http/prometheus]
+    logs/journal:
+      receivers: [journald/services, journald/system]
+      processors: [memory_limiter, filter/journal, resource_detection, resource/vm, batch]
+      exporters: [otlp_http/ourios_vm]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, attributes/reporter, batch]
-      exporters: [otlphttp/prometheus]
+      exporters: [otlp_http/prometheus]
     traces:
       receivers: [otlp]
       processors: [memory_limiter, attributes/reporter, batch]
-      exporters: [otlphttp/jaeger]
+      exporters: [otlp_http/jaeger]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, attributes/reporter, batch]
-      exporters: [otlphttp/ourios]
+      exporters: [otlp_http/ourios]

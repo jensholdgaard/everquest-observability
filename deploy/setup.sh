@@ -62,6 +62,9 @@ otlp:
     - service.name
     - service.instance.id
     - service.version
+    # The VM receivers (2026-09-06): one resource per unit / the host itself.
+    - systemd.unit.name
+    - host.name
   keep_identifying_resource_attributes: true
   # Escape dots to underscores so PromQL names are plain (eq_combat_damage_total), no UTF-8 quoting.
   translation_strategy: UnderscoreEscapingWithSuffixes
