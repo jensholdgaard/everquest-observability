@@ -13,13 +13,24 @@ service:
     logs:
       level: info
     metrics:
-      # Default is :8888, which the gateway collector already owns.
+      # Pushed to Prometheus's OTLP receiver (2026-09-06), no scrape; :18888 is gone.
+      # A fixed instance id, or every restart would be a new series set.
       readers:
-        - pull:
+        - periodic:
+            interval: 30000
             exporter:
-              prometheus:
-                host: 127.0.0.1
-                port: 18888
+              otlp:
+                protocol: http/protobuf
+                endpoint: http://127.0.0.1:9090/api/v1/otlp/v1/metrics
+    resource:
+      attributes:
+        - name: service.instance.id
+          value: eq-perses
+    # Jaeger's own spans went to the SDK default, localhost:4317 — Ourios, which
+    # implements logs only ("traces export: rpc error: code = Unimplemented", 55 a
+    # day). Off: a tracer tracing itself into itself is a loop, not observability.
+    traces:
+      level: none
 
 extensions:
   jaeger_query:
