@@ -10,7 +10,7 @@ and the [everquest-semconv](https://github.com/jensholdgaard/everquest-semconv) 
 ```
 perses/perses.yaml     # Perses server config with Discord OAuth SSO (validated on Perses v0.54.0)
 perses/provisioning/   # project, datasources, and the stock dashboards (read-only to members)
-deploy/                # setup.sh (installs everything), Caddyfile, tokens.sh, harden.sh, harden-ssh.sh (keys-only sshd, rate limit, fail2ban)
+deploy/                # setup.sh (installs everything), Caddyfile (the live one: site wall, OTLP ingest, tracing + OTLP metrics), caddy-otel.conf (OTEL_* env for Caddy), tokens.sh, harden.sh, harden-ssh.sh (keys-only sshd, rate limit, fail2ban), ssh-allow-me.sh (Hetzner firewall)
 collector/             # local + gateway OTLP collector configs
 jaeger/                # Jaeger config: OTLP trace backend for fight/zone spans
 bot/                   # Discord bot: /dpstoken, /dpsrevoke, role mapping (roles.yaml)

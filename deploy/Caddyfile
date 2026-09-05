@@ -1,6 +1,92 @@
-# Caddy reverse proxy with automatic HTTPS (Let's Encrypt) in front of Perses.
-# Set PERSES_DOMAIN to your real domain (A record -> the server's public IP).
-{$PERSES_DOMAIN} {
+{
+	# Request metrics, per host, pushed over OTLP (standard OTEL_* env in the unit drop-in).
+	metrics {
+		per_host
+		otlp
+	}
+}
+
+# The login wall. forward_auth written out: ask Perses who the viewer is with
+# the viewer's own cookies; on 2xx carry on to the real handler, on anything
+# else send the browser through the Discord login and back to the page it
+# asked for. Data and chart queries are fetched by the page, so those get 401.
+(wall) {
+	reverse_proxy 127.0.0.1:8080 {
+		method GET
+		rewrite /perses/api/v1/user/whoami
+		header_up X-Forwarded-Method {method}
+		header_up X-Forwarded-Uri {uri}
+		@ok status 2xx
+		handle_response @ok {
+		}
+		@nope status 401 403
+		handle_response @nope {
+			redir * "/perses/api/auth/providers/oauth/discord/login?rd={http.request.orig_uri}" 302
+		}
+	}
+}
+(wall_xhr) {
+	forward_auth 127.0.0.1:8080 {
+		uri /perses/api/v1/user/whoami
+	}
+}
+
+dps.nocturnal-guild.de {
+	# One span per request into Jaeger, named "<method> <host>" as the HTTP semconv asks.
+	tracing {
+		span "{http.request.method} {http.request.host}"
+	}
 	encode zstd gzip
-	reverse_proxy 127.0.0.1:8080
+
+	# OTLP ingest -> gateway collector (authenticates, then routes metrics to Prometheus).
+	handle_path /otlp/* {
+		map {header.Authorization} {eq_reporter} {
+			import /etc/caddy/eq-reporters.map
+			default ""
+		}
+		reverse_proxy 127.0.0.1:4319 {
+			header_up X-EQ-Reporter {eq_reporter}
+		}
+	}
+
+	# Perses lives under /perses (api_prefix in perses.yaml). The Discord app
+	# still has the old callback URL registered, so that one path is kept
+	# reachable and rewritten onto the prefix - no Developer Portal change.
+	handle /api/auth/providers/oauth/discord/callback* {
+		rewrite * /perses{uri}
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle /perses* {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	# Everything else is behind the login (see the wall snippets above).
+	handle_path /data/* {
+		import wall_xhr
+		root * /var/www/roster
+		file_server
+	}
+	handle_path /prom/* {
+		import wall_xhr
+		reverse_proxy 127.0.0.1:9090
+	}
+	handle /roster/data.json {
+		import wall_xhr
+		root * /var/www
+		file_server
+	}
+	handle_path /roster/* {
+		import wall
+		root * /var/www/roster
+		header Cache-Control "no-cache, must-revalidate"
+		file_server
+	}
+	redir /site /
+	redir /site/* / 301
+	# The site is rendered by the bot from its live ledger snapshot (Maud
+	# templates); /assets/* is the Perses island the puller unpacks for it.
+	handle {
+		import wall
+		reverse_proxy 127.0.0.1:8090
+	}
 }

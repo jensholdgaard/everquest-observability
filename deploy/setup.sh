@@ -295,6 +295,21 @@ systemctl enable --now eq-gateway
 systemctl restart eq-gateway
 systemctl enable --now perses
 systemctl restart perses
+# Caddy's own telemetry over OTLP (2026-09-06): the tracing directive and `metrics { otlp }`
+# in the Caddyfile read the standard OTEL_* variables from this drop-in — traces to Jaeger,
+# metrics to Prometheus's OTLP receiver, both localhost. Same file as deploy/caddy-otel.conf.
+mkdir -p /etc/systemd/system/caddy.service.d
+cat > /etc/systemd/system/caddy.service.d/otel.conf <<'OTEL'
+[Service]
+Environment=OTEL_SERVICE_NAME=caddy
+Environment=OTEL_RESOURCE_ATTRIBUTES=service.instance.id=eq-perses,service.version=2.11.4
+Environment=OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+Environment=OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:14318/v1/traces
+Environment=OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://127.0.0.1:9090/api/v1/otlp/v1/metrics
+Environment=OTEL_METRIC_EXPORT_INTERVAL=30000
+Environment=OTEL_TRACES_SAMPLER=parentbased_always_on
+OTEL
+systemctl daemon-reload
 systemctl enable --now caddy
 systemctl enable --now eq-reporters-reload.path
 /usr/local/bin/eq-render-reporters || true   # renders the map, then reloads Caddy itself
