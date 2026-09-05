@@ -68,6 +68,15 @@ otlp:
 storage:
   tsdb:
     out_of_order_time_window: 30m
+# Traces of Prometheus itself (2026-09-06): every sampled PromQL evaluation as spans
+# (promqlEval, inner evals, selector fetches) to the on-box Jaeger over OTLP/HTTP.
+# Sampled, because Perses refreshes many panels every 30 s; raise the fraction while
+# chasing a slow panel. Reloadable: systemctl kill -s HUP prometheus.
+tracing:
+  client_type: http
+  endpoint: 127.0.0.1:14318
+  insecure: true
+  sampling_fraction: 0.25
 YML
 cat > /etc/systemd/system/prometheus.service <<'UNIT'
 [Unit]
