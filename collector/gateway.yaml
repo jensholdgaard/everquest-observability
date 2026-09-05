@@ -93,8 +93,19 @@ receivers:
       - ssh
       - unattended-upgrades
     operators: &journal_shape
-      # The receiver delivers every journal field as a map body. Keep the message as
-      # the body and the unit as an attribute, named as the systemd receiver names it.
+      # The receiver delivers every journal field as a map body and sets no severity.
+      # PRIORITY is the syslog level (0 emerg .. 7 debug); map it so "warnings and up"
+      # means something. Then keep the message as the body and the unit as an
+      # attribute, named as the systemd receiver names it.
+      - type: severity_parser
+        parse_from: body.PRIORITY
+        if: body.PRIORITY != nil
+        mapping:
+          fatal: ["0", "1", "2"]
+          error: "3"
+          warn: "4"
+          info: ["5", "6"]
+          debug: "7"
       - type: move
         from: body._SYSTEMD_UNIT
         to: attributes["systemd.unit.name"]
@@ -145,13 +156,15 @@ processors:
       - key: service.instance.id
         value: eq-perses
         action: upsert
-  # Perses writes one access line per proxied panel query — a dashboard left open
-  # is 17k lines a day of "GET 200". Its warnings and errors still get through.
+  # Perses writes one access line per proxied panel query (GETs to Prometheus, POSTs
+  # to Ourios) — a dashboard left open is 17k lines a day. Its access lines at info
+  # are dropped whatever the method or status; warnings, errors and everything that
+  # is not an access line still get through.
   filter/journal:
     error_mode: ignore
     logs:
       log_record:
-        - 'attributes["systemd.unit.name"] == "perses.service" and IsMatch(body, "level=info method=GET status=2")'
+        - 'attributes["systemd.unit.name"] == "perses.service" and IsMatch(body, "level=info method=[A-Z]+ status=")'
 
 exporters:
   # Metrics -> on-box Prometheus OTLP receiver.
