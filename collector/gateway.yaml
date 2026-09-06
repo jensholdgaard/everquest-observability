@@ -171,6 +171,74 @@ processors:
     logs:
       log_record:
         - 'attributes["systemd.unit.name"] == "perses.service" and IsMatch(body, "level=info method=[A-Z]+ status=")'
+  # The two span-metrics branches below each want their own duration buckets: a PromQL
+  # evaluation is milliseconds, a raid boss is minutes. So the trace stream is split by
+  # who sent it; the Jaeger pipeline still sees everything.
+  filter/only_fights:
+    error_mode: ignore
+    traces:
+      span:
+        - 'resource.attributes["service.name"] != "everquest"'
+  filter/no_fights:
+    error_mode: ignore
+    traces:
+      span:
+        - 'resource.attributes["service.name"] == "everquest"'
+  # Derived metrics are the gateway's own product: one job in Prometheus, whatever the
+  # spans' or lines' origin (that origin is a datapoint attribute, service_name / unit).
+  resource/derived:
+    attributes:
+      - key: service.name
+        value: eq-gateway
+        action: upsert
+      - key: service.instance.id
+        value: eq-perses
+        action: upsert
+
+# --- Connectors (2026-09-06): signals derived from other signals inside the gateway -----
+# Each is the exporter of one pipeline and the receiver of metrics/derived below.
+# The metrics carry no resource attributes from their sources on purpose: a Zeal resource
+# names the character (service.instance.id), and player identity never goes on a metric.
+connectors:
+  # Services on the box: calls and duration per span name. Prometheus's promqlEval,
+  # Ourios's query plan, Caddy's request per host. Errors show up as status.code.
+  span_metrics/services:
+    namespace: gateway.span
+    histogram:
+      unit: s
+      explicit:
+        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
+    exclude_dimensions: [collector.instance.id]
+    resource_metrics_key_attributes: [service.name]
+    aggregation_cardinality_limit: 2000
+    metrics_flush_interval: 30s
+  # Fights: how long the raid takes per target, and how they end. Span name is
+  # `fight <target>`; two raiders on the same mob are two spans, so `calls` counts
+  # raider-fights, not kills (the ledger's kill log is the deduplicated truth).
+  span_metrics/fights:
+    namespace: everquest.fight
+    histogram:
+      unit: s
+      explicit:
+        buckets: [10s, 20s, 30s, 45s, 60s, 90s, 2m, 3m, 5m, 8m, 12m, 20m]
+    dimensions:
+      - name: everquest.fight.outcome
+      - name: everquest.zone.name
+    exclude_dimensions: [collector.instance.id, status.code, span.kind]
+    resource_metrics_key_attributes: [service.name]
+    aggregation_cardinality_limit: 5000
+    metrics_flush_interval: 30s
+  # Journal lines at error or worse, per unit. Delta sums: Prometheus runs with
+  # --enable-feature=otlp-deltatocumulative to accumulate them (deploy/setup.sh).
+  count:
+    logs:
+      vm.journal.errors:
+        description: Journal lines at error or worse, per systemd unit.
+        conditions:
+          - 'log.severity_number >= SEVERITY_NUMBER_ERROR'
+        attributes:
+          - key: systemd.unit.name
+            default_value: kernel-or-systemd
 
 exporters:
   # Metrics -> on-box Prometheus OTLP receiver.
@@ -221,7 +289,7 @@ service:
     logs/journal:
       receivers: [journald/services, journald/system]
       processors: [memory_limiter, filter/journal, resource_detection, resource/vm, batch]
-      exporters: [otlp_http/ourios_vm]
+      exporters: [otlp_http/ourios_vm, count]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, attributes/reporter, batch]
@@ -234,3 +302,17 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, attributes/reporter, batch]
       exporters: [otlp_http/ourios]
+    # Derived (2026-09-06): the same OTLP spans, split by sender, into the two span-metrics
+    # connectors; the journal's count connector; all three land in Prometheus as one job.
+    traces/services:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/no_fights]
+      exporters: [span_metrics/services]
+    traces/fights:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/only_fights]
+      exporters: [span_metrics/fights]
+    metrics/derived:
+      receivers: [span_metrics/services, span_metrics/fights, count]
+      processors: [memory_limiter, resource/derived, batch]
+      exporters: [otlp_http/prometheus]

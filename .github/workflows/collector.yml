@@ -56,7 +56,7 @@ jobs:
           ./_build/eq-gateway components > components.yaml
           for c in otlp host_metrics systemd journald prometheus \
                    batch memory_limiter attributes filter resource_detection resource \
-                   otlp_http debug bearertokenauth file_storage; do
+                   otlp_http debug bearertokenauth file_storage span_metrics count; do
             grep -qE "name: ${c}$" components.yaml || { echo "missing component: ${c}"; exit 1; }
           done
           echo "all components present"

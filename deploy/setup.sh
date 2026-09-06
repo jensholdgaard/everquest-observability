@@ -89,7 +89,7 @@ Wants=network-online.target
 [Service]
 # Retention 400d (2026-09-06), up from the 15d default: the kill/lockout history behind the
 # spawn timers and kill counts must outlive a fortnight. 15 days was 98 MB; a year is a few GB.
-ExecStart=/usr/local/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus --web.listen-address=127.0.0.1:9090 --web.enable-otlp-receiver --storage.tsdb.retention.time=400d
+ExecStart=/usr/local/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus --web.listen-address=127.0.0.1:9090 --web.enable-otlp-receiver --enable-feature=otlp-deltatocumulative --storage.tsdb.retention.time=400d
 Restart=always
 RestartSec=3
 [Install]
