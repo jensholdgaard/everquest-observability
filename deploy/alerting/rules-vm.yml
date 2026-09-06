@@ -46,6 +46,14 @@ groups:
           summary: "Root filesystem {{ $value | humanizePercentage }} full"
           description: Writes fail soon - the ledger's WAL among them.
 
+      - alert: CpuSaturated
+        expr: 1 - avg(system_cpu_utilization_ratio{state="idle"}) > 0.9
+        for: 15m
+        labels: { team: vm, severity: warning }
+        annotations:
+          summary: "CPU {{ $value | humanizePercentage }} busy for 15 minutes"
+          description: A raid night's ingest is nowhere near this; a runaway query or a compaction stuck in a loop is. CPU by service on the Infrastructure dashboard names it.
+
       - alert: MemoryPressure
         expr: system_memory_utilization_ratio{state="used"} > 0.9
         for: 15m
