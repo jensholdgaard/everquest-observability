@@ -59,6 +59,7 @@ receivers:
       - caddy.service
       - perses.service
       - prometheus.service
+      - alertmanager.service
       - jaeger.service
       - ourios.service
       - eq-gateway.service
@@ -69,7 +70,9 @@ receivers:
       - unattended-upgrades.service
     metrics:
       systemd.service.restarts: { enabled: true }
-  # Prometheus itself only speaks Prometheus: the one scrape left on the box, done here.
+  # Prometheus and Alertmanager only speak Prometheus (Alertmanager 0.34 has no OTel at
+  # all): the scrapes left on the box, done here. Alertmanager's counters are how a failing
+  # Discord delivery becomes visible (NotificationsFailing in deploy/alerting/rules-vm.yml).
   prometheus/self:
     config:
       scrape_configs:
@@ -77,6 +80,10 @@ receivers:
           scrape_interval: 30s
           static_configs:
             - targets: ['127.0.0.1:9090']
+        - job_name: alertmanager
+          scrape_interval: 30s
+          static_configs:
+            - targets: ['127.0.0.1:9093']
   # Service logs from the journal, allowlisted by unit: what a person would read when
   # something is wrong. Everything else (ssh scans, the firewall, session scopes)
   # was 97 % of the journal and is not shipped. The bot is excluded: its own
@@ -88,9 +95,11 @@ receivers:
       - caddy
       - perses
       - prometheus
+      - alertmanager
       - jaeger
       - ourios
       - eq-gateway
+      - eq-heartbeat
       - nocturnal-deploy
       - nocturnal-watchdog
       - nocturnal-backup
@@ -112,6 +121,17 @@ receivers:
           warn: "4"
           info: ["5", "6"]
           debug: "7"
+      # The unit is the service (2026-09-06): caddy's lines say service.name=caddy, not
+      # eq-perses. Lines without a unit (the kernel's) take the syslog identifier; anything
+      # still unnamed gets the box's name from resource/vm_logs below.
+      - type: add
+        field: resource["service.name"]
+        value: EXPR(trimSuffix(body._SYSTEMD_UNIT, ".service"))
+        if: body._SYSTEMD_UNIT != nil
+      - type: add
+        field: resource["service.name"]
+        value: EXPR(body.SYSLOG_IDENTIFIER)
+        if: body._SYSTEMD_UNIT == nil && body.SYSLOG_IDENTIFIER != nil
       - type: move
         from: body._SYSTEMD_UNIT
         to: attributes["systemd.unit.name"]
@@ -147,18 +167,32 @@ processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 256
-  # The VM's telemetry is one service to Prometheus (job/instance) and one tenant to
-  # Ourios; host.name comes from the OS. The systemd receiver's per-unit resource
-  # attribute is promoted to a label by Prometheus (prometheus.yml), not renamed here.
+  # host.name comes from the OS, on everything the VM produces.
   resource_detection:
     detectors: [system]
     system:
       hostname_sources: [os]
+  # What is *about the box* - host metrics, unit states - is the box's service to
+  # Prometheus (job eq-perses). What a service produces itself keeps its own name:
+  # Prometheus's and Alertmanager's scraped metrics arrive as jobs prometheus and
+  # alertmanager (metrics/scrapes, no resource/vm), journal lines as the unit's name
+  # (the receiver's operators). The systemd receiver's per-unit resource attribute is
+  # promoted to a label by Prometheus (prometheus.yml), not renamed here.
   resource/vm:
     attributes:
       - key: service.name
         value: eq-perses
         action: upsert
+      - key: service.instance.id
+        value: eq-perses
+        action: upsert
+  # Journal lines: the instance is the box; the name is the unit's, set by the receiver,
+  # and only a line with neither unit nor identifier falls back to the box's name.
+  resource/vm_logs:
+    attributes:
+      - key: service.name
+        value: eq-perses
+        action: insert
       - key: service.instance.id
         value: eq-perses
         action: upsert
@@ -283,12 +317,16 @@ service:
                 endpoint: http://127.0.0.1:9090/api/v1/otlp/v1/metrics
   pipelines:
     metrics/vm:
-      receivers: [host_metrics, systemd, prometheus/self]
+      receivers: [host_metrics, systemd]
       processors: [memory_limiter, resource_detection, resource/vm, batch]
+      exporters: [otlp_http/prometheus]
+    metrics/scrapes:
+      receivers: [prometheus/self]
+      processors: [memory_limiter, resource_detection, batch]
       exporters: [otlp_http/prometheus]
     logs/journal:
       receivers: [journald/services, journald/system]
-      processors: [memory_limiter, filter/journal, resource_detection, resource/vm, batch]
+      processors: [memory_limiter, filter/journal, resource_detection, resource/vm_logs, batch]
       exporters: [otlp_http/ourios_vm, count]
     metrics:
       receivers: [otlp]

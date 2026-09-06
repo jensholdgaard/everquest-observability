@@ -16,7 +16,7 @@ groups:
       - alert: UnitDown
         # The daemons a member depends on; the bot has its own rule. Timer-driven and
         # oneshot units are not listed, they are inactive by design.
-        expr: systemd_unit_state{systemd_unit_active_state="active", systemd_unit_name=~"(caddy|perses|prometheus|jaeger|ourios|eq-gateway|fail2ban|ssh)\\.service"} == 0
+        expr: systemd_unit_state{systemd_unit_active_state="active", systemd_unit_name=~"(caddy|perses|prometheus|alertmanager|jaeger|ourios|eq-gateway|fail2ban|ssh)\\.service"} == 0
         for: 3m
         labels: { team: vm, severity: critical }
         annotations:
@@ -77,6 +77,24 @@ groups:
         annotations:
           summary: Gateway refusing data
           description: The memory limiter is pushing back; members' clients retry but a sustained refusal loses raid data.
+
+      - alert: NotificationsFailing
+        # Alertmanager's own counters, scraped by the gateway. If Discord rejects one channel's
+        # webhook this still reaches the other; if both are gone, Healthchecks' heartbeat is
+        # the only voice left, and this alert waits in Alertmanager until a channel returns.
+        expr: sum(increase(alertmanager_notifications_failed_total[30m])) > 0
+        labels: { team: vm, severity: warning }
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} Discord notification(s) failed in 30 minutes"
+          description: journalctl -u alertmanager shows the response; a deleted or moved webhook is the usual cause.
+
+      - alert: AlertmanagerConfigBroken
+        expr: alertmanager_config_last_reload_successful == 0
+        for: 5m
+        labels: { team: vm, severity: warning }
+        annotations:
+          summary: Alertmanager is running on its previous config
+          description: The last reload failed; amtool check-config /etc/alertmanager/alertmanager.yml says why.
 
       - alert: JournalErrorsBurst
         expr: sum by (systemd_unit_name) (increase(vm_journal_errors_total[10m])) > 20
