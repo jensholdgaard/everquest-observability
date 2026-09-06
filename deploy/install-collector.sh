@@ -46,12 +46,13 @@ curl -fsSL -o "$tmp/eq-gateway" "$base/eq-gateway$cb"
 chmod 755 "$tmp/eq-gateway"
 echo "build $(cat "$tmp/build.txt"): $("$tmp/eq-gateway" --version)"
 
-# The live config, as the service user, before anything is touched.
-chown root:eqgw "$tmp/eq-gateway"
-sudo -u eqgw "$tmp/eq-gateway" validate --config "$CONFIG"
+# Installing the binary changes nothing yet: the unit runs whatever the drop-in names, and the
+# drop-in is written last. So install first, then validate the live config *as the service user*
+# with the installed file (a mktemp dir is 0700, which eqgw cannot enter).
+install -m 0755 -o root -g root "$tmp/eq-gateway" "$BIN"
+sudo -u eqgw "$BIN" validate --config "$CONFIG"
 echo "$CONFIG validates"
 
-install -m 0755 -o root -g root "$tmp/eq-gateway" "$BIN"
 mkdir -p "$(dirname "$DROPIN")"
 cat > "$DROPIN" <<EOF
 # Managed by everquest-observability/deploy/install-collector.sh (build $(cat "$tmp/build.txt")).
