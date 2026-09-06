@@ -1,0 +1,40 @@
+# Alertmanager on eq-perses (2026-09-06): Prometheus rules -> two Discord channels.
+#
+# Alerts labelled team=bot (the rules in nocturnal-discord/deploy/prometheus/nocturnal-rules.yml)
+# go to the bot's channel; everything else (rules-vm.yml here) to the VM channel. The webhook
+# URLs are not in this file: each receiver reads its URL from a root-owned file on the box,
+# written by install-alerting.sh from BOT_DISCORD_WEBHOOK_URL / VM_DISCORD_WEBHOOK_URL.
+#
+# Why webhooks and not the bot posting: the alert path must not share a failure mode with what
+# it watches. "The bot is down" has to arrive while the bot is down. The box itself being gone
+# is the one case nothing here can report - that is the Healthchecks.io heartbeat's job.
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: vm
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  # A guild bot has one operator; a reminder every few hours is enough, a page every hour is noise.
+  repeat_interval: 6h
+  routes:
+    - matchers:
+        - team = bot
+      receiver: bot
+
+receivers:
+  - name: bot
+    discord_configs:
+      - webhook_url_file: /etc/alertmanager/bot.webhook
+        send_resolved: true
+  - name: vm
+    discord_configs:
+      - webhook_url_file: /etc/alertmanager/vm.webhook
+        send_resolved: true
+
+inhibit_rules:
+  # When the box's telemetry is gone altogether, per-unit and per-service alerts are noise.
+  - source_matchers: [alertname = CollectorSilent]
+    target_matchers: [team = vm]
+    equal: []

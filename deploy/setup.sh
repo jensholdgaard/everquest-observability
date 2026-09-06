@@ -80,6 +80,15 @@ tracing:
   endpoint: 127.0.0.1:14318
   insecure: true
   sampling_fraction: 0.25
+# Alerting (2026-09-06): rules in /etc/prometheus/rules, Alertmanager on the box -> Discord.
+# Installed by deploy/alerting/install-alerting.sh, which also appends this block on a box
+# whose prometheus.yml predates it.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['127.0.0.1:9093']
+rule_files:
+  - /etc/prometheus/rules/*.yml
 YML
 cat > /etc/systemd/system/prometheus.service <<'UNIT'
 [Unit]

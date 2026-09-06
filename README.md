@@ -25,6 +25,7 @@ client/windows/        # the member-facing installer + README
 | Caddy | 80/443 | TLS, routes `/otlp/*` to the gateway and everything else to Perses |
 | eq-gateway (otelcol) | 4319 | Authenticates per-member bearer tokens, routes metrics to Prometheus, traces to Jaeger, logs to Ourios; observes the VM itself (host, systemd, journal); derives metrics from spans and journal lines (`span_metrics`, `count` connectors) |
 | Prometheus | 9090 | Native OTLP receiver (`/api/v1/otlp/v1/metrics`), the metrics store |
+| Alertmanager | 9093 | Prometheus rules (`deploy/alerting/`, plus the bot's from nocturnal-discord) to two Discord channels via webhooks |
 | Jaeger | 16686 | Trace backend for fight/zone spans (Badger storage, 72h) |
 | Perses | 8080 | Dashboards, Discord SSO |
 | dpsbot | — | Discord bot; provisions tokens, roles and personal projects |

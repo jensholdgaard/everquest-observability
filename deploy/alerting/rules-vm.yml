@@ -1,0 +1,78 @@
+# Prometheus alerting rules for the box (2026-09-06). Everything here is team=vm and lands in
+# the VM channel; the bot's own rules live in nocturnal-discord (team=bot). Metric names are
+# the gateway's receivers' as Prometheus translates them (deploy/setup.sh promotes
+# systemd.unit.name and host.name to labels).
+groups:
+  - name: eq-perses
+    rules:
+      - alert: CollectorSilent
+        expr: absent_over_time(system_memory_utilization_ratio[5m])
+        for: 2m
+        labels: { team: vm, severity: critical }
+        annotations:
+          summary: No host metrics for 5 minutes
+          description: The gateway collector stopped reporting the box. Prometheus is alive (or this could not fire), so it is the collector - systemctl status eq-gateway.
+
+      - alert: UnitDown
+        # The daemons a member depends on; the bot has its own rule. Timer-driven and
+        # oneshot units are not listed, they are inactive by design.
+        expr: systemd_unit_state{systemd_unit_active_state="active", systemd_unit_name=~"(caddy|perses|prometheus|jaeger|ourios|eq-gateway|fail2ban|ssh)\\.service"} == 0
+        for: 3m
+        labels: { team: vm, severity: critical }
+        annotations:
+          summary: "{{ $labels.systemd_unit_name }} is not active"
+          description: "systemd reports {{ $labels.systemd_unit_name }} not active for 3 minutes. journalctl -u {{ $labels.systemd_unit_name }} -n 50"
+
+      - alert: UnitRestarting
+        expr: increase(systemd_service_restarts_total[1h]) >= 3
+        labels: { team: vm, severity: warning }
+        annotations:
+          summary: "{{ $labels.systemd_unit_name }} restarted {{ $value | printf \"%.0f\" }} times in an hour"
+          description: Restart=always is hiding a crash loop. The unit's journal has the reason.
+
+      - alert: DiskFilling
+        expr: max(system_filesystem_utilization_ratio) > 0.85
+        for: 15m
+        labels: { team: vm, severity: warning }
+        annotations:
+          summary: "Root filesystem {{ $value | humanizePercentage }} full"
+          description: Prometheus (400d retention), Jaeger and Ourios' WAL grow here. du -sh /var/lib/* to see which.
+
+      - alert: DiskAlmostFull
+        expr: max(system_filesystem_utilization_ratio) > 0.95
+        for: 5m
+        labels: { team: vm, severity: critical }
+        annotations:
+          summary: "Root filesystem {{ $value | humanizePercentage }} full"
+          description: Writes fail soon - the ledger's WAL among them.
+
+      - alert: MemoryPressure
+        expr: system_memory_utilization_ratio{state="used"} > 0.9
+        for: 15m
+        labels: { team: vm, severity: warning }
+        annotations:
+          summary: "Memory {{ $value | humanizePercentage }} used"
+          description: The OOM killer picks the largest process, which is Prometheus or Ourios. systemctl status shows who grew.
+
+      - alert: CollectorQueueBackedUp
+        expr: max by (exporter) (otelcol_exporter_queue_size) > 500
+        for: 10m
+        labels: { team: vm, severity: warning }
+        annotations:
+          summary: "Gateway exporter {{ $labels.exporter }} queue at {{ $value }}"
+          description: The sink behind that exporter (Prometheus, Jaeger or Ourios) stopped taking data; the queue holds 1000 batches, then drops.
+
+      - alert: CollectorRefusing
+        expr: sum(rate(otelcol_receiver_refused_metric_points_total[10m])) + sum(rate(otelcol_receiver_refused_spans_total[10m])) + sum(rate(otelcol_receiver_refused_log_records_total[10m])) > 0
+        for: 10m
+        labels: { team: vm, severity: warning }
+        annotations:
+          summary: Gateway refusing data
+          description: The memory limiter is pushing back; members' clients retry but a sustained refusal loses raid data.
+
+      - alert: JournalErrorsBurst
+        expr: sum by (systemd_unit_name) (increase(vm_journal_errors_total[10m])) > 20
+        labels: { team: vm, severity: warning }
+        annotations:
+          summary: "{{ $labels.systemd_unit_name }} logged {{ $value | printf \"%.0f\" }} errors in 10 minutes"
+          description: Counted by the gateway's count connector as the lines are shipped; the lines are on the Infrastructure dashboard.
