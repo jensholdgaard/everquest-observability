@@ -1,0 +1,11 @@
+# One heartbeat to Healthchecks.io; fired by eq-heartbeat.timer. See deploy/eq-heartbeat.sh.
+[Unit]
+Description=Heartbeat to Healthchecks.io (dead-man's switch for eq-perses)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/eq-heartbeat
+# A failed ping is the outside world's problem to notice; the unit itself never "fails".
+SuccessExitStatus=0 22 28
