@@ -1,0 +1,59 @@
+# The eq-perses gateway collector, built by the OpenTelemetry Collector Builder (ocb) from
+# exactly the components /etc/eq-otel/gateway.yaml uses - and nothing else.
+#
+# The contrib distribution the box ran until 2026-09-06 registered 107 receivers, 32 processors,
+# 49 exporters and 40 extensions for a config that uses 5, 6, 2 and 2. Every unused component was
+# compiled in, initialised at start, and counted in every advisory. This manifest is the whole
+# list; adding a component to the config means adding its line here, and a version bump is a
+# reviewable diff instead of "download the next tarball and hope".
+#
+# Versions: all components at one collector release; the confmap providers follow the core
+# library's 1.x line for that release (copied from the contrib manifest of the same tag:
+# https://github.com/open-telemetry/opentelemetry-collector-releases/blob/v0.157.0/distributions/otelcol-contrib/manifest.yaml).
+# The CI workflow (.github/workflows/collector.yml) builds it and publishes the binary;
+# deploy/install-collector.sh puts it on the box.
+dist:
+  module: github.com/jensholdgaard/everquest-observability/collector
+  name: eq-gateway
+  description: eq-perses gateway collector (guild OTLP ingest, VM self-observation)
+  version: 0.157.0
+  output_path: ./_build
+  build_tags: "grpcnotrace"
+
+extensions:
+  # Per-member bearer tokens on the OTLP/HTTP listener.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/bearertokenauthextension v0.157.0
+  # The journald receivers' cursor, so a restart resumes where it stopped.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.157.0
+
+exporters:
+  # Prometheus (metrics), Jaeger (traces), Ourios (logs) - all OTLP/HTTP on localhost.
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.157.0
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.157.0
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.157.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.157.0
+  # attributes/reporter: the member identity Caddy injects, stamped over the payload's claim.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.157.0
+  # filter/journal: perses' per-query access lines dropped.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.157.0
+  # resource_detection + resource/vm: host.name, and one service identity for the VM's telemetry.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.157.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.157.0
+
+receivers:
+  # Members' Zeal and the bot (HTTP, authenticated); Ourios' self-telemetry (gRPC, localhost).
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.157.0
+  # The VM: box resources, unit states, journal lines, Prometheus's own /metrics.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.157.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/systemdreceiver v0.157.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/journaldreceiver v0.157.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.157.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.63.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.63.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpprovider v1.63.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.63.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.63.0

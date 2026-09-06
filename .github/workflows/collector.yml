@@ -1,0 +1,93 @@
+# Build the gateway collector from collector/builder-config.yaml with ocb and publish it to the
+# rolling `eq-gateway` prerelease. deploy/install-collector.sh on the VM downloads it, verifies
+# the checksum, validates the live config with it, and switches the unit over (or back).
+#
+# Runs when the manifest or this workflow changes, and on demand. The gateway config itself is
+# not a trigger: a config change is deployed by copying the file, not by rebuilding the binary.
+name: collector
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'collector/builder-config.yaml'
+      - '.github/workflows/collector.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: collector
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # upload release assets
+    env:
+      OCB_VERSION: "0.157.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: false
+
+      - name: fetch the builder at the manifest's collector version
+        run: |
+          curl --proto '=https' --tlsv1.2 -fsSL -o ocb \
+            "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fbuilder%2Fv${OCB_VERSION}/ocb_${OCB_VERSION}_linux_amd64"
+          chmod +x ocb
+          ./ocb version
+
+      - name: build
+        run: |
+          # The manifest's version must be the builder's: ocb checks the core library version it
+          # resolves against dist.version's major.minor and refuses a mismatch.
+          grep -q "version: ${OCB_VERSION}" collector/builder-config.yaml
+          CGO_ENABLED=0 ./ocb --config collector/builder-config.yaml
+          ls -la _build/eq-gateway
+
+      - name: smoke test the binary
+        run: |
+          ./_build/eq-gateway --version
+          # Every component the gateway config names must be registered, or the box would refuse
+          # the config on restart. The names are the config's keys (before any /instance suffix).
+          ./_build/eq-gateway components > components.yaml
+          for c in otlp host_metrics systemd journald prometheus \
+                   batch memory_limiter attributes filter resource_detection resource \
+                   otlp_http debug bearertokenauth file_storage; do
+            grep -qE "name: ${c}$" components.yaml || { echo "missing component: ${c}"; exit 1; }
+          done
+          echo "all components present"
+          # The live config, with its absolute paths, validates against the new binary too.
+          mkdir -p /tmp/eq-otel
+          sed -e 's#/etc/eq-otel/tokens.txt#/tmp/eq-otel/tokens.txt#' \
+              -e 's#/var/lib/eq-gateway/journald#/tmp/eq-otel/journald#' \
+              collector/gateway.yaml > /tmp/eq-otel/gateway.yaml
+          touch /tmp/eq-otel/tokens.txt
+          ./_build/eq-gateway validate --config /tmp/eq-otel/gateway.yaml
+          echo "gateway.yaml validates"
+
+      - name: stamp and checksum
+        run: |
+          cd _build
+          echo "${GITHUB_SHA::7}" > build.txt
+          sha256sum eq-gateway > eq-gateway.sha256
+          cat eq-gateway.sha256 build.txt
+
+      - name: publish to the rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd _build
+          gh release view eq-gateway -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create eq-gateway -R "$GITHUB_REPOSITORY" --prerelease \
+              --title "eq-gateway collector (rolling)" \
+              --notes "The gateway collector built from collector/builder-config.yaml. Installed on the VM by deploy/install-collector.sh."
+          # sha256 last: the installer reads it first, so a half-updated release fails closed.
+          gh release upload eq-gateway eq-gateway --clobber -R "$GITHUB_REPOSITORY"
+          gh release upload eq-gateway build.txt --clobber -R "$GITHUB_REPOSITORY"
+          gh release upload eq-gateway eq-gateway.sha256 --clobber -R "$GITHUB_REPOSITORY"
+          gh release edit eq-gateway -R "$GITHUB_REPOSITORY" \
+            --notes "The gateway collector built from collector/builder-config.yaml at ${GITHUB_SHA::7} (collector ${OCB_VERSION}). Installed on the VM by deploy/install-collector.sh."
