@@ -677,6 +677,28 @@ spec:
                 query: (time() - max by (everquest_raid_target) (max_over_time(everquest_raid_kill_timestamp_seconds[7d])))
                   / 3600
                 seriesNameFormat: '{{everquest_raid_target}}'
+    raid_kills:
+      kind: Panel
+      spec:
+        display:
+          name: Kills (last 30 days)
+          description: 'How many times each lockout target died, counted from the kill timestamps the
+            server''s lockout notice carries: every distinct timestamp is one kill, taken from whichever
+            reporter saw the most. Needs the Zeal build that exports the lockouts (9418ff5 or later, the
+            current release) on at least one raider who received the notice.
+
+            '
+        plugin:
+          kind: TimeSeriesTable
+          spec: {}
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: max by (everquest_raid_target) (changes(everquest_raid_kill_timestamp_seconds[30d]) + 1)
+                seriesNameFormat: '{{everquest_raid_target}}'
     raid_lockouts:
       kind: Panel
       spec:
@@ -1139,6 +1161,12 @@ spec:
         height: 10
         content:
           $ref: '#/spec/panels/raid_lockouts'
+      - x: 0
+        y: 18
+        width: 24
+        height: 8
+        content:
+          $ref: '#/spec/panels/raid_kills'
   - kind: Grid
     spec:
       display:
