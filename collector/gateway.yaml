@@ -21,6 +21,11 @@ receivers:
           authenticator: bearertokenauth
         # Needed so the reporter identity Caddy injects reaches the processor below.
         include_metadata: true
+      # Services on the box whose SDK only speaks OTLP/gRPC (Ourios' self-telemetry,
+      # 2026-09-06). Localhost only and never proxied by Caddy, so no bearer token:
+      # the same pipelines route metrics to Prometheus and traces to Jaeger.
+      grpc:
+        endpoint: 127.0.0.1:4321
 
   # --- The VM itself (2026-09-06) — nothing here is scraped by Prometheus ---------------
   # Box resources straight from /proc and /sys. The utilization gauges are what the
