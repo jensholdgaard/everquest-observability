@@ -935,6 +935,54 @@ spec:
                   kind: JaegerDatasource
                   name: jaeger
                 traceId: $fight
+    fight_length:
+      kind: Panel
+      spec:
+        display:
+          name: Fight length, median per target (kills, last 7 days)
+          description: >-
+            How long the raid takes on each mob, from the gateway's span-metrics connector over
+            every raider's fight spans (everquest_fight_duration): the median across all reports,
+            kills only. Two raiders on the same mob are two reports of one fight, which the median
+            absorbs and a count would not.
+        plugin:
+          kind: BarChart
+          spec:
+            calculation: last
+            sort: desc
+            mode: value
+            format:
+              unit: seconds
+              decimalPlaces: 0
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: topk(15, histogram_quantile(0.5, sum by (le, span_name) (increase(everquest_fight_duration_seconds_bucket{everquest_fight_outcome="killed"}[7d]))) > 30)
+                seriesNameFormat: '{{span_name}}'
+    fight_outcomes:
+      kind: Panel
+      spec:
+        display:
+          name: Fights ended / h by outcome
+          description: >-
+            Fight spans closed per hour, by how they ended (killed, idle, zoned). Counts reports,
+            not kills - the Kills panel above is the deduplicated one.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: right
+        queries:
+        - kind: TimeSeriesQuery
+          spec:
+            plugin:
+              kind: PrometheusTimeSeriesQuery
+              spec:
+                query: sum by (everquest_fight_outcome) (increase(everquest_fight_calls_total[1h]))
+                seriesNameFormat: '{{everquest_fight_outcome}}'
     lockout_bars:
       kind: Panel
       spec:
@@ -1236,6 +1284,18 @@ spec:
         height: 10
         content:
           $ref: '#/spec/panels/fight_gantt'
+      - x: 0
+        y: 20
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/fight_length'
+      - x: 12
+        y: 20
+        width: 12
+        height: 8
+        content:
+          $ref: '#/spec/panels/fight_outcomes'
   - kind: Grid
     spec:
       display:
