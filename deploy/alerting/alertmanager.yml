@@ -19,22 +19,49 @@ route:
   # A guild bot has one operator; a reminder every few hours is enough, a page every hour is noise.
   repeat_interval: 6h
   routes:
+    # severity=info alerts exist to inhibit others (NocturnalJustRestarted); nobody hears them.
+    - matchers:
+        - severity = info
+      receiver: none
+    # Criticals announce their resolution; warnings do not (2026-09-08). A warning that
+    # flaps around its threshold would otherwise post "resolved" every time it dips.
     - matchers:
         - team = bot
+        - severity = critical
       receiver: bot
+    - matchers:
+        - team = bot
+      receiver: bot-quiet
+    - matchers:
+        - severity = critical
+      receiver: vm
+    - receiver: vm-quiet
 
 receivers:
+  - name: none
   - name: bot
     discord_configs:
       - webhook_url_file: /etc/alertmanager/bot.webhook
         send_resolved: true
+  - name: bot-quiet
+    discord_configs:
+      - webhook_url_file: /etc/alertmanager/bot.webhook
+        send_resolved: false
   - name: vm
     discord_configs:
       - webhook_url_file: /etc/alertmanager/vm.webhook
         send_resolved: true
+  - name: vm-quiet
+    discord_configs:
+      - webhook_url_file: /etc/alertmanager/vm.webhook
+        send_resolved: false
 
 inhibit_rules:
   # When the box's telemetry is gone altogether, per-unit and per-service alerts are noise.
   - source_matchers: [alertname = CollectorSilent]
     target_matchers: [team = vm]
+    equal: []
+  # Ten minutes after the bot starts, its warnings wait; its criticals do not.
+  - source_matchers: [alertname = NocturnalJustRestarted]
+    target_matchers: [team = bot, severity = warning]
     equal: []

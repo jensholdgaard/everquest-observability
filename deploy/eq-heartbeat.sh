@@ -15,9 +15,22 @@ CRITICAL=(nocturnal.service eq-gateway.service prometheus.service perses.service
 
 url=$(cat "$URL_FILE" 2>/dev/null) || { echo "no check url in $URL_FILE"; exit 0; }
 
+# A unit mid-restart ("activating": the bot replaying its ledger after a deploy) is not
+# down, and neither is one that was caught once between stop and start. A unit counts
+# as down when it is not active or activating on two consecutive minutes - or is
+# "failed", which systemd only says when it has given up. /run does not survive a
+# reboot, which is right: after a reboot everything starts from a clean slate.
+STATE=/run/eq-heartbeat
+mkdir -p "$STATE"
 down=()
 for u in "${CRITICAL[@]}"; do
-  systemctl is-active --quiet "$u" || down+=("$u $(systemctl is-active "$u")")
+  state=$(systemctl is-active "$u")
+  case "$state" in
+    active|activating|reloading) rm -f "$STATE/$u"; continue ;;
+    failed) down+=("$u failed") ;;
+    *)
+      if [ -e "$STATE/$u" ]; then down+=("$u $state (2 checks)"); else touch "$STATE/$u"; fi ;;
+  esac
 done
 
 # --retry covers a hiccup on the way out; -m bounds the whole thing well under the timer period.
