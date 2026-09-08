@@ -259,6 +259,13 @@ ${PERSES_DOMAIN} {
 	}
 	redir /site /
 	redir /site/* / 301
+	# The site's drop zone (2026-09-08): a member's Zeal export, POSTed by the
+	# member page's script; forward_auth, then the bot asks Perses who the
+	# cookies belong to before it writes anything.
+	handle /upload {
+		import wall_xhr
+		reverse_proxy 127.0.0.1:8090
+	}
 	# The site is rendered by the bot from its live ledger snapshot (Maud
 	# templates); /assets/* is the Perses island the puller unpacks for it.
 	handle {
