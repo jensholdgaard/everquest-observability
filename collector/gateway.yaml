@@ -213,6 +213,9 @@ processors:
     traces:
       span:
         - 'resource.attributes["service.name"] != "everquest"'
+        # Zeal's other spans - Complete Heal chains and their casts - are not fights
+        # (2026-09-09: 27 chain names had crept into everquest_fight_calls_total).
+        - 'not IsMatch(name, "^fight ")'
   filter/no_fights:
     error_mode: ignore
     traces:
