@@ -62,6 +62,32 @@ groups:
           summary: "Memory {{ $value | humanizePercentage }} used"
           description: The OOM killer picks the largest process, which is Prometheus or Ourios. systemctl status shows who grew.
 
+      # Ourios wedges: a transient object-store outage closes its ingest path and it
+      # never reopens without a restart (2026-09-11 and again 2026-09-12, upstream
+      # issue #791). Both times the only warning was CollectorQueueBackedUp below,
+      # which is the collector's buffer filling *as a consequence* - 40 minutes late
+      # the second time, and nine hours of logs were already gone the first. This
+      # names the cause: Ourios is taking nothing while the collector is failing to
+      # hand it anything. Either half alone is ambiguous (a quiet box ingests
+      # nothing; a blip fails a send), together they are not.
+      - alert: OuriosNotIngesting
+        expr: |
+          sum(rate(ourios_ingest_records_total[10m])) == 0
+          and on()
+          sum(rate(otelcol_exporter_send_failed_log_records_total[10m])) > 0
+        for: 5m
+        labels: { team: vm, severity: critical }
+        annotations:
+          summary: Ourios is accepting no logs while the collector has some to send
+          description: >-
+            Every log post is being refused, so journal lines and the bot's own records are
+            being dropped. Queries keep working, which is what makes this easy to miss.
+            Check with a real payload - `curl -s -o /dev/null -w '%{http_code}' -X POST
+            http://127.0.0.1:4318/v1/logs -H 'x-ourios-tenant: eq-perses' -H 'content-type:
+            application/json' -d '{"resourceLogs":[]}'` answers 200 even when wedged, so send
+            actual records. `systemctl restart ourios` clears it, then restart eq-gateway to
+            drain its queue.
+
       - alert: CollectorQueueBackedUp
         expr: max by (exporter) (otelcol_exporter_queue_size) > 500
         for: 10m
