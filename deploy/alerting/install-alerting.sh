@@ -35,6 +35,13 @@ fi
 install -m 0640 -o root -g alertmanager alertmanager.yml /etc/alertmanager/alertmanager.yml
 /usr/local/bin/amtool check-config /etc/alertmanager/alertmanager.yml
 
+# --log.level=debug (2026-09-12): a *successful* send is logged only at debug, so
+# "which alert went to which channel, and when" was unanswerable after the fact -
+# the only trace was a counter going up, and its labels name the integration, not
+# the receiver. At this size that costs nothing: the steady state is a handful of
+# lines a day, and the journald receiver ships them to Ourios, so the history is a
+# log query. The two lines that matter are `msg="Received alert"` and
+# `msg=flushing ... aggrGroup=` - the latter names the route that matched.
 cat > /etc/systemd/system/alertmanager.service <<'UNIT'
 [Unit]
 Description=Alertmanager (Prometheus alerts -> Discord)
@@ -43,7 +50,7 @@ Wants=network-online.target
 [Service]
 User=alertmanager
 Group=alertmanager
-ExecStart=/usr/local/bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/var/lib/alertmanager --web.listen-address=127.0.0.1:9093 --web.external-url=http://127.0.0.1:9093 --cluster.listen-address=""
+ExecStart=/usr/local/bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/var/lib/alertmanager --web.listen-address=127.0.0.1:9093 --web.external-url=http://127.0.0.1:9093 --cluster.listen-address="" --log.level=debug
 Restart=always
 RestartSec=3
 NoNewPrivileges=true
