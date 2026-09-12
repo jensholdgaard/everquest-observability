@@ -66,8 +66,12 @@ dps.nocturnal-guild.de {
 		root * /var/www/roster
 		file_server
 	}
+	# Prometheus for humans (2026-09-12): `wall`, not `wall_xhr`, because the
+	# Source link on every Discord alert lands here from a browser - a bare 401
+	# is a dead end, a redirect to the Discord login is not. Nothing programmatic
+	# uses this path; the bot, Perses and the collector all talk to 127.0.0.1:9090.
 	handle_path /prom/* {
-		import wall_xhr
+		import wall
 		reverse_proxy 127.0.0.1:9090
 	}
 	handle /roster/data.json {

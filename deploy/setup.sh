@@ -71,6 +71,12 @@ otlp:
 storage:
   tsdb:
     out_of_order_time_window: 30m
+# --web.external-url (2026-09-12): every alert Alertmanager posts to Discord ends
+# with a Source link, and Prometheus builds it from this. Unset, it used the box's
+# own hostname - http://eq-perses:9090/graph?... - which no member can reach.
+# --web.route-prefix stays / so the internal endpoints every component uses (the
+# OTLP receiver, /api/v1/query, the Perses datasource) are unchanged; only the
+# generated links carry the prefix, which Caddy strips again on the way in.
 # Traces of Prometheus itself (2026-09-06): every sampled PromQL evaluation as spans
 # (promqlEval, inner evals, selector fetches) to the on-box Jaeger over OTLP/HTTP.
 # Sampled, because Perses refreshes many panels every 30 s; raise the fraction while
@@ -98,7 +104,7 @@ Wants=network-online.target
 [Service]
 # Retention 400d (2026-09-06), up from the 15d default: the kill/lockout history behind the
 # spawn timers and kill counts must outlive a fortnight. 15 days was 98 MB; a year is a few GB.
-ExecStart=/usr/local/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus --web.listen-address=127.0.0.1:9090 --web.enable-otlp-receiver --enable-feature=otlp-deltatocumulative --storage.tsdb.retention.time=400d
+ExecStart=/usr/local/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/var/lib/prometheus --web.listen-address=127.0.0.1:9090 --web.external-url=https://dps.nocturnal-guild.de/prom/ --web.route-prefix=/ --web.enable-otlp-receiver --enable-feature=otlp-deltatocumulative --storage.tsdb.retention.time=400d
 Restart=always
 RestartSec=3
 [Install]
@@ -242,8 +248,12 @@ ${PERSES_DOMAIN} {
 		root * /var/www/roster
 		file_server
 	}
+	# Prometheus for humans (2026-09-12): `wall`, not `wall_xhr`, because the
+	# Source link on every Discord alert lands here from a browser - a bare 401
+	# is a dead end, a redirect to the Discord login is not. Nothing programmatic
+	# uses this path; the bot, Perses and the collector all talk to 127.0.0.1:9090.
 	handle_path /prom/* {
-		import wall_xhr
+		import wall
 		reverse_proxy 127.0.0.1:9090
 	}
 	handle /roster/data.json {
