@@ -1,7 +1,10 @@
-# Prometheus alerting rules for the box (2026-09-06). Everything here is team=vm and lands in
-# the VM channel; the bot's own rules live in nocturnal-discord (team=bot). Metric names are
-# the gateway's receivers' as Prometheus translates them (deploy/setup.sh promotes
-# systemd.unit.name and host.name to labels).
+# Alerting rules for the box. Every rule here is `severity: critical`, deliberately
+# (2026-09-13): the set had grown to 13 warnings that restated what a dashboard
+# already showed, and a channel of warnings is a channel nobody reads - which is how
+# Ourios refused every write for nine hours on 2026-09-11 while its only signal was a
+# warning. If a rule does not warrant stopping what you are doing, it belongs on the
+# Infrastructure dashboard, not here. Headroom (CPU, memory, disk below 95 %), unit
+# restarts and journal error bursts all moved there.
 groups:
   - name: eq-perses
     rules:
@@ -23,20 +26,7 @@ groups:
           summary: "{{ $labels.systemd_unit_name }} is not active"
           description: "systemd reports {{ $labels.systemd_unit_name }} not active for 3 minutes. journalctl -u {{ $labels.systemd_unit_name }} -n 50"
 
-      - alert: UnitRestarting
-        expr: increase(systemd_service_restarts_total[1h]) >= 3
-        labels: { team: vm, severity: warning }
-        annotations:
-          summary: "{{ $labels.systemd_unit_name }} restarted {{ $value | printf \"%.0f\" }} times in an hour"
-          description: Restart=always is hiding a crash loop. The unit's journal has the reason.
 
-      - alert: DiskFilling
-        expr: max(system_filesystem_utilization_ratio) > 0.85
-        for: 15m
-        labels: { team: vm, severity: warning }
-        annotations:
-          summary: "Root filesystem {{ $value | humanizePercentage }} full"
-          description: Prometheus (400d retention), Jaeger and Ourios' WAL grow here. du -sh /var/lib/* to see which.
 
       - alert: DiskAlmostFull
         expr: max(system_filesystem_utilization_ratio) > 0.95
@@ -46,21 +36,6 @@ groups:
           summary: "Root filesystem {{ $value | humanizePercentage }} full"
           description: Writes fail soon - the ledger's WAL among them.
 
-      - alert: CpuSaturated
-        expr: 1 - avg(system_cpu_utilization_ratio{state="idle"}) > 0.9
-        for: 15m
-        labels: { team: vm, severity: warning }
-        annotations:
-          summary: "CPU {{ $value | humanizePercentage }} busy for 15 minutes"
-          description: A raid night's ingest is nowhere near this; a runaway query or a compaction stuck in a loop is. CPU by service on the Infrastructure dashboard names it.
-
-      - alert: MemoryPressure
-        expr: system_memory_utilization_ratio{state="used"} > 0.9
-        for: 15m
-        labels: { team: vm, severity: warning }
-        annotations:
-          summary: "Memory {{ $value | humanizePercentage }} used"
-          description: The OOM killer picks the largest process, which is Prometheus or Ourios. systemctl status shows who grew.
 
       # Ourios wedges: a transient object-store outage closes its ingest path and it
       # never reopens without a restart (2026-09-11 and again 2026-09-12, upstream
@@ -70,6 +45,7 @@ groups:
       # names the cause: Ourios is taking nothing while the collector is failing to
       # hand it anything. Either half alone is ambiguous (a quiet box ingests
       # nothing; a blip fails a send), together they are not.
+
       - alert: OuriosNotIngesting
         expr: |
           sum(rate(ourios_ingest_records_total[10m])) == 0
@@ -88,18 +64,11 @@ groups:
             actual records. `systemctl restart ourios` clears it, then restart eq-gateway to
             drain its queue.
 
-      - alert: CollectorQueueBackedUp
-        expr: max by (exporter) (otelcol_exporter_queue_size) > 500
-        for: 10m
-        labels: { team: vm, severity: warning }
-        annotations:
-          summary: "Gateway exporter {{ $labels.exporter }} queue at {{ $value }}"
-          description: The sink behind that exporter (Prometheus, Jaeger or Ourios) stopped taking data; the queue holds 1000 batches, then drops.
 
       - alert: CollectorRefusing
         expr: sum(rate(otelcol_receiver_refused_metric_points_total[10m])) + sum(rate(otelcol_receiver_refused_spans_total[10m])) + sum(rate(otelcol_receiver_refused_log_records_total[10m])) > 0
         for: 10m
-        labels: { team: vm, severity: warning }
+        labels: { team: vm, severity: critical }
         annotations:
           summary: Gateway refusing data
           description: The memory limiter is pushing back; members' clients retry but a sustained refusal loses raid data.
@@ -109,7 +78,7 @@ groups:
         # webhook this still reaches the other; if both are gone, Healthchecks' heartbeat is
         # the only voice left, and this alert waits in Alertmanager until a channel returns.
         expr: sum(increase(alertmanager_notifications_failed_total[30m])) > 0
-        labels: { team: vm, severity: warning }
+        labels: { team: vm, severity: critical }
         annotations:
           summary: "{{ $value | printf \"%.0f\" }} Discord notification(s) failed in 30 minutes"
           description: journalctl -u alertmanager shows the response; a deleted or moved webhook is the usual cause.
@@ -117,14 +86,9 @@ groups:
       - alert: AlertmanagerConfigBroken
         expr: alertmanager_config_last_reload_successful == 0
         for: 5m
-        labels: { team: vm, severity: warning }
+        labels: { team: vm, severity: critical }
         annotations:
           summary: Alertmanager is running on its previous config
           description: The last reload failed; amtool check-config /etc/alertmanager/alertmanager.yml says why.
 
-      - alert: JournalErrorsBurst
-        expr: sum by (systemd_unit_name) (increase(vm_journal_errors_total[10m])) > 20
-        labels: { team: vm, severity: warning }
-        annotations:
-          summary: "{{ $labels.systemd_unit_name }} logged {{ $value | printf \"%.0f\" }} errors in 10 minutes"
-          description: Counted by the gateway's count connector as the lines are shipped; the lines are on the Infrastructure dashboard.
+
