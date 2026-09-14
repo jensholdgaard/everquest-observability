@@ -50,7 +50,7 @@ extensions:
             values: /var/lib/jaeger/values
           ephemeral: false
           ttl:
-            spans: 72h # fights are only interesting while the raid is fresh; keeps disk bounded
+            spans: 24h # fights are only interesting while the raid is fresh. Was 72h: Badger caches scale with what is on disk, and at 72h Jaeger sat at 1.2 GB of heap on a 4 GB box (2026-09-14)
 
 receivers:
   otlp:
