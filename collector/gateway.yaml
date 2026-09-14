@@ -292,11 +292,19 @@ exporters:
     logs_endpoint: http://127.0.0.1:4318/v1/logs
     headers:
       x-ourios-tenant: nocturnal
+    # Ourios stalls for tens of seconds at a time while it churns through its
+    # own connection backlog (ourios#791). At the 5 s default this exporter
+    # abandons the request mid-flight, the client closes, and Ourios leaves its
+    # side in CLOSE-WAIT - which is the very thing pushing it toward its
+    # descriptor ceiling. Waiting instead of walking away costs nothing here:
+    # these are logs behind a retry queue, not a user waiting on a reply.
+    timeout: 30s
   # The VM's own logs under their own tenant, so the guild's data stays the guild's.
   otlp_http/ourios_vm:
     logs_endpoint: http://127.0.0.1:4318/v1/logs
     headers:
       x-ourios-tenant: eq-perses
+    timeout: 30s
   debug:
     verbosity: basic
 
