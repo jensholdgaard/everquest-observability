@@ -7,6 +7,10 @@
 set -euo pipefail
 
 AM_VERSION="0.34.0"  # pinned like the collector; bump deliberately
+# Bump to the first release carrying prometheus/alertmanager#5496 (merged to main 2026-08-30,
+# not in 0.34.1; expected in 0.35.0). Until then the Discord notifier treats HTTP 429 as final:
+# on 2026-09-16 two notices were lost to Discord's code 40062 ("Service resource is being rate
+# limited", retry_after 3) after a single attempt. No config option changes this.
 
 id -u alertmanager >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin alertmanager
 install -d -m 0750 -o root -g alertmanager /etc/alertmanager
