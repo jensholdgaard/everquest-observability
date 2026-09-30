@@ -95,6 +95,13 @@ dps.nocturnal-guild.de {
 		import wall_xhr
 		reverse_proxy 127.0.0.1:8090
 	}
+	# The spell tracker's API (2026-09-30): script calls, so an unsigned
+	# viewer gets a 401 the page turns into its sign-in button, not a
+	# redirect its fetch would swallow. The page itself stays behind the wall.
+	handle /spells/api/* {
+		import wall_xhr
+		reverse_proxy 127.0.0.1:8090
+	}
 
 	# The site is rendered by the bot from its live ledger snapshot (Maud
 	# templates); /assets/* is the Perses island the puller unpacks for it.
