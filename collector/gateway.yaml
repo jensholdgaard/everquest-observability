@@ -11,6 +11,12 @@ extensions:
     # One token per line; anything after whitespace is a comment (we put the member name there).
     # Managed with deploy/tokens.sh — add/revoke without touching this config.
     filename: /etc/eq-otel/tokens.txt
+  # Client side of the same extension: Ourios's own telemetry to Dash0 (2026-10-11), where the
+  # maintainer already collects its fuzzing runs. The token is a systemd encrypted credential
+  # (deploy/eq-gateway-dash0.conf, installed by deploy/install-dash0.sh): decrypted by systemd into
+  # this tmpfs path for the unit alone, never in this config, the environment or the repo.
+  bearertokenauth/dash0:
+    filename: /run/credentials/eq-gateway.service/dash0_token
 
 receivers:
   otlp:
@@ -205,6 +211,36 @@ processors:
     logs:
       log_record:
         - 'attributes["systemd.unit.name"] == "perses.service" and IsMatch(body, "level=info method=[A-Z]+ status=")'
+  # Dash0 gets Ourios and nothing else: the guild's data (member clients, the bot) and the rest of
+  # the box stay here. Ourios's own telemetry carries tenant names, routes and engine internals,
+  # never query text or record content.
+  filter/only_ourios:
+    error_mode: ignore
+    metrics:
+      metric:
+        - 'resource.attributes["service.name"] != "ourios-server"'
+    traces:
+      span:
+        - 'resource.attributes["service.name"] != "ourios-server"'
+  # Ourios's journal lines (it logs at warn, so on a quiet day none) under the name its SDK uses,
+  # so Dash0 puts them next to its traces and metrics rather than under a second service.
+  filter/only_ourios_journal:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'attributes["systemd.unit.name"] != "ourios.service"'
+  resource/dash0:
+    attributes:
+      - key: service.name
+        value: ourios-server
+        action: upsert
+      - key: service.instance.id
+        value: eq-perses
+        action: upsert
+      # The fuzzing runs say test; this is the deployment users query.
+      - key: deployment.environment.name
+        value: production
+        action: upsert
   # The two span-metrics branches below each want their own duration buckets: a PromQL
   # evaluation is milliseconds, a raid boss is minutes. So the trace stream is split by
   # who sent it; the Jaeger pipeline still sees everything.
@@ -305,11 +341,16 @@ exporters:
     headers:
       x-ourios-tenant: eq-perses
     timeout: 30s
+  # Ourios's own telemetry -> Dash0, the same region the fuzzing workflow exports to.
+  otlp_http/dash0:
+    endpoint: https://ingress.eu-west-1.aws.dash0.com
+    auth:
+      authenticator: bearertokenauth/dash0
   debug:
     verbosity: basic
 
 service:
-  extensions: [bearertokenauth, file_storage/journald]
+  extensions: [bearertokenauth, bearertokenauth/dash0, file_storage/journald]
   # The collector's own metrics, pushed to Prometheus's OTLP receiver: no port 8888,
   # no scrape. A fixed instance id, or every restart would be a new series set.
   telemetry:
@@ -365,3 +406,16 @@ service:
       receivers: [span_metrics/services, span_metrics/fights, count]
       processors: [memory_limiter, resource/derived, batch]
       exporters: [otlp_http/prometheus]
+    # Ourios's own telemetry, a second copy to Dash0 (the local copies above are unchanged).
+    metrics/dash0:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/only_ourios, resource/dash0, batch]
+      exporters: [otlp_http/dash0]
+    traces/dash0:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/only_ourios, resource/dash0, batch]
+      exporters: [otlp_http/dash0]
+    logs/dash0:
+      receivers: [journald/services]
+      processors: [memory_limiter, filter/only_ourios_journal, resource/dash0, batch]
+      exporters: [otlp_http/dash0]
