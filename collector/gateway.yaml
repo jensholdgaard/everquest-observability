@@ -222,13 +222,19 @@ processors:
     traces:
       span:
         - 'resource.attributes["service.name"] != "ourios-server"'
-  # Ourios's journal lines (it logs at warn, so on a quiet day none) under the name its SDK uses,
-  # so Dash0 puts them next to its traces and metrics rather than under a second service.
-  filter/only_ourios_journal:
+    # Ourios's logs come over OTLP (2026-10-11), from its tracing bridge: real severity, its own
+    # scope, structured attributes and the trace/span ids of the request that logged them. The
+    # journal copy of the same lines (stderr, every one at priority info) stays local only.
+    logs:
+      log_record:
+        - 'resource.attributes["service.name"] != "ourios-server"'
+  # The other way round for the guild's logs pipeline: Ourios's own records are not the guild's
+  # data and never go into the nocturnal tenant (nor back into the Ourios that wrote them).
+  filter/no_ourios:
     error_mode: ignore
     logs:
       log_record:
-        - 'attributes["systemd.unit.name"] != "ourios.service"'
+        - 'resource.attributes["service.name"] == "ourios-server"'
   resource/dash0:
     attributes:
       - key: service.name
@@ -390,7 +396,7 @@ service:
       exporters: [otlp_http/jaeger]
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, attributes/reporter, batch]
+      processors: [memory_limiter, filter/no_ourios, attributes/reporter, batch]
       exporters: [otlp_http/ourios]
     # Derived (2026-09-06): the same OTLP spans, split by sender, into the two span-metrics
     # connectors; the journal's count connector; all three land in Prometheus as one job.
@@ -416,6 +422,6 @@ service:
       processors: [memory_limiter, filter/only_ourios, resource/dash0, batch]
       exporters: [otlp_http/dash0]
     logs/dash0:
-      receivers: [journald/services]
-      processors: [memory_limiter, filter/only_ourios_journal, resource/dash0, batch]
+      receivers: [otlp]
+      processors: [memory_limiter, filter/only_ourios, resource/dash0, batch]
       exporters: [otlp_http/dash0]
