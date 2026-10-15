@@ -18,7 +18,7 @@ systemd.service.* namespace and follow the general naming rules: .limit is the c
 .usage what is in use out of it, .utilization the ratio.
 """
 import json
-import subprocess
+import os
 import sys
 import time
 import urllib.request
@@ -69,15 +69,24 @@ def pressure(path):
     return out
 
 
-def unit_show(unit):
-    res = subprocess.run(
-        ["systemctl", "show", unit, "-p", "MainPID", "-p", "ActiveEnterTimestamp", "--timestamp=unix"],
-        capture_output=True, text=True, timeout=10,
-    )
-    props = dict(l.split("=", 1) for l in res.stdout.splitlines() if "=" in l)
-    pid = int(props.get("MainPID", "0") or 0)
-    started = props.get("ActiveEnterTimestamp", "").lstrip("@")
-    return pid, int(started) if started.isdigit() else None
+def unit_main(base):
+    """The unit's oldest process and when it started, in ns since the epoch - from the cgroup and
+    /proc, not systemctl: under DynamicUser the system bus is not reachable ("Transport endpoint
+    is not connected", 2026-10-15), which left the fd limit missing and every cumulative series
+    restarting each run. The oldest process in the cgroup is the one systemd started."""
+    pids = [int(p) for p in (read(base + "cgroup.procs") or "").split() if p.isdigit()]
+    if not pids:
+        return 0, None
+    pid = min(pids)
+    stat = read(f"/proc/{pid}/stat") or ""
+    btime = next((int(l.split()[1]) for l in (read("/proc/stat") or "").splitlines() if l.startswith("btime ")), None)
+    try:
+        ticks = int(stat.rsplit(")", 1)[1].split()[19])  # field 22, starttime, after the comm field
+    except (IndexError, ValueError):
+        return pid, None
+    if btime is None:
+        return pid, None
+    return pid, btime * 10**9 + ticks * 10**9 // os.sysconf("SC_CLK_TCK")
 
 
 def nofile_limit(pid):
@@ -111,8 +120,8 @@ def unit_metrics(unit, now_ns):
     current = read(base + "memory.current")
     if current is None:
         return None  # not running, or no such unit: nothing to say
-    pid, started = unit_show(unit)
-    start_ns = str(started * 10**9) if started else now_ns
+    pid, started_ns = unit_main(base)
+    start_ns = str(started_ns) if started_ns else now_ns
 
     def pt(value, a=None, cumulative=False):
         p = {"timeUnixNano": now_ns, "attributes": attrs(a or {})}
