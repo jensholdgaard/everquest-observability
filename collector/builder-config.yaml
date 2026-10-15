@@ -41,6 +41,8 @@ processors:
   # resource_detection + resource/vm: host.name, and one service identity for the VM's telemetry.
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.157.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.157.0
+  # transform/semconv: the Dash0 copy of the box's metrics renamed to today's semantic conventions.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.157.0
 
 connectors:
   # Spans -> RED metrics (calls, duration histogram) per service and span name: query latency of

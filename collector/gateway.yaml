@@ -256,6 +256,73 @@ processors:
     metrics:
       metric:
         - 'resource.attributes["systemd.unit.name"] != nil and resource.attributes["systemd.unit.name"] != "ourios.service"'
+  # The Dash0 copy of the box's metrics in today's semantic conventions (2026-10-15). hostmetrics
+  # 0.157 still emits several pre-v1 names (system.linux.memory.available, system.processes.*,
+  # system.network.connections/packets/dropped, bare state/device/direction keys) and has no
+  # feature gate to switch them, so they are renamed here - for Dash0 only: the Prometheus copy
+  # keeps the collector's names, which the Perses dashboards query. Attributes first, while the
+  # metric still has its old name; then the metric names and their units.
+  transform/semconv:
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
+          - 'set(datapoint.attributes["cpu.mode"], datapoint.attributes["state"]) where IsMatch(metric.name, "^system\\.cpu\\.(time|utilization)$") and datapoint.attributes["state"] != nil'
+          - 'delete_key(datapoint.attributes, "state") where IsMatch(metric.name, "^system\\.cpu\\.(time|utilization)$")'
+          - 'set(datapoint.attributes["system.memory.state"], datapoint.attributes["state"]) where IsMatch(metric.name, "^system\\.memory\\.(usage|utilization)$") and datapoint.attributes["state"] != nil'
+          - 'delete_key(datapoint.attributes, "state") where IsMatch(metric.name, "^system\\.memory\\.(usage|utilization)$")'
+          - 'set(datapoint.attributes["system.device"], datapoint.attributes["device"]) where IsMatch(metric.name, "^system\\.filesystem\\.") and datapoint.attributes["device"] != nil'
+          - 'delete_key(datapoint.attributes, "device") where IsMatch(metric.name, "^system\\.filesystem\\.")'
+          - 'set(datapoint.attributes["system.filesystem.mode"], datapoint.attributes["mode"]) where IsMatch(metric.name, "^system\\.filesystem\\.") and datapoint.attributes["mode"] != nil'
+          - 'delete_key(datapoint.attributes, "mode") where IsMatch(metric.name, "^system\\.filesystem\\.")'
+          - 'set(datapoint.attributes["system.filesystem.mountpoint"], datapoint.attributes["mountpoint"]) where IsMatch(metric.name, "^system\\.filesystem\\.") and datapoint.attributes["mountpoint"] != nil'
+          - 'delete_key(datapoint.attributes, "mountpoint") where IsMatch(metric.name, "^system\\.filesystem\\.")'
+          - 'set(datapoint.attributes["system.filesystem.state"], datapoint.attributes["state"]) where IsMatch(metric.name, "^system\\.filesystem\\.") and datapoint.attributes["state"] != nil'
+          - 'delete_key(datapoint.attributes, "state") where IsMatch(metric.name, "^system\\.filesystem\\.")'
+          - 'set(datapoint.attributes["system.filesystem.type"], datapoint.attributes["type"]) where IsMatch(metric.name, "^system\\.filesystem\\.") and datapoint.attributes["type"] != nil'
+          - 'delete_key(datapoint.attributes, "type") where IsMatch(metric.name, "^system\\.filesystem\\.")'
+          - 'set(datapoint.attributes["system.device"], datapoint.attributes["device"]) where IsMatch(metric.name, "^system\\.disk\\.") and datapoint.attributes["device"] != nil'
+          - 'delete_key(datapoint.attributes, "device") where IsMatch(metric.name, "^system\\.disk\\.")'
+          - 'set(datapoint.attributes["disk.io.direction"], datapoint.attributes["direction"]) where IsMatch(metric.name, "^system\\.disk\\.") and datapoint.attributes["direction"] != nil'
+          - 'delete_key(datapoint.attributes, "direction") where IsMatch(metric.name, "^system\\.disk\\.")'
+          - 'set(datapoint.attributes["network.interface.name"], datapoint.attributes["device"]) where IsMatch(metric.name, "^system\\.network\\.(io|packets|dropped|errors)$") and datapoint.attributes["device"] != nil'
+          - 'delete_key(datapoint.attributes, "device") where IsMatch(metric.name, "^system\\.network\\.(io|packets|dropped|errors)$")'
+          - 'set(datapoint.attributes["network.io.direction"], datapoint.attributes["direction"]) where IsMatch(metric.name, "^system\\.network\\.(io|packets|dropped|errors)$") and datapoint.attributes["direction"] != nil'
+          - 'delete_key(datapoint.attributes, "direction") where IsMatch(metric.name, "^system\\.network\\.(io|packets|dropped|errors)$")'
+          - 'set(datapoint.attributes["network.transport"], datapoint.attributes["protocol"]) where metric.name == "system.network.connections" and datapoint.attributes["protocol"] != nil'
+          - 'delete_key(datapoint.attributes, "protocol") where metric.name == "system.network.connections"'
+          - 'set(datapoint.attributes["network.connection.state"], datapoint.attributes["state"]) where metric.name == "system.network.connections" and datapoint.attributes["state"] != nil'
+          - 'delete_key(datapoint.attributes, "state") where metric.name == "system.network.connections"'
+          - 'set(datapoint.attributes["system.device"], datapoint.attributes["device"]) where IsMatch(metric.name, "^system\\.paging\\.") and datapoint.attributes["device"] != nil'
+          - 'delete_key(datapoint.attributes, "device") where IsMatch(metric.name, "^system\\.paging\\.")'
+          - 'set(datapoint.attributes["system.paging.state"], datapoint.attributes["state"]) where IsMatch(metric.name, "^system\\.paging\\.") and datapoint.attributes["state"] != nil'
+          - 'delete_key(datapoint.attributes, "state") where IsMatch(metric.name, "^system\\.paging\\.")'
+          - 'set(datapoint.attributes["system.paging.direction"], datapoint.attributes["direction"]) where IsMatch(metric.name, "^system\\.paging\\.") and datapoint.attributes["direction"] != nil'
+          - 'delete_key(datapoint.attributes, "direction") where IsMatch(metric.name, "^system\\.paging\\.")'
+          - 'set(datapoint.attributes["system.paging.fault.type"], datapoint.attributes["type"]) where IsMatch(metric.name, "^system\\.paging\\.") and datapoint.attributes["type"] != nil'
+          - 'delete_key(datapoint.attributes, "type") where IsMatch(metric.name, "^system\\.paging\\.")'
+          - 'set(datapoint.attributes["process.state"], datapoint.attributes["status"]) where metric.name == "system.processes.count" and datapoint.attributes["status"] != nil'
+          - 'delete_key(datapoint.attributes, "status") where metric.name == "system.processes.count"'
+          - 'set(datapoint.attributes["cpu.mode"], "iowait") where datapoint.attributes["cpu.mode"] == "wait"'
+          - 'set(datapoint.attributes["network.connection.state"], ConvertCase(datapoint.attributes["network.connection.state"], "lower")) where datapoint.attributes["network.connection.state"] != nil'
+          - 'replace_pattern(datapoint.attributes["system.paging.direction"], "^page_", "")'
+      - context: metric
+        statements:
+          - 'set(metric.name, "system.memory.linux.available") where metric.name == "system.linux.memory.available"'
+          - 'set(metric.unit, "{process}") where metric.name == "system.processes.count"'
+          - 'set(metric.name, "system.process.count") where metric.name == "system.processes.count"'
+          - 'set(metric.unit, "{process}") where metric.name == "system.processes.created"'
+          - 'set(metric.name, "system.process.created") where metric.name == "system.processes.created"'
+          - 'set(metric.unit, "{connection}") where metric.name == "system.network.connections"'
+          - 'set(metric.name, "system.network.connection.count") where metric.name == "system.network.connections"'
+          - 'set(metric.unit, "{packet}") where metric.name == "system.network.dropped"'
+          - 'set(metric.name, "system.network.packet.dropped") where metric.name == "system.network.dropped"'
+          - 'set(metric.unit, "{packet}") where metric.name == "system.network.packets"'
+          - 'set(metric.name, "system.network.packet.count") where metric.name == "system.network.packets"'
+          - 'set(metric.unit, "{error}") where IsMatch(metric.name, "^system\\.network\\.errors$")'
+          - 'set(metric.unit, "{operation}") where IsMatch(metric.name, "^system\\.disk\\.(operations|merged|pending_operations)$")'
+          - 'set(metric.unit, "{operation}") where IsMatch(metric.name, "^system\\.paging\\.operations$")'
+          - 'set(metric.unit, "{fault}") where IsMatch(metric.name, "^system\\.paging\\.faults$")'
   resource/dash0_env:
     attributes:
       - key: deployment.environment.name
@@ -455,7 +522,7 @@ service:
     # climb with nothing to compare it to - not the box's 3.8 GB, not the 1.5 GB MemoryMax.
     metrics/vm_dash0:
       receivers: [host_metrics, systemd]
-      processors: [memory_limiter, resource_detection, resource/vm, filter/dash0_units, resource/dash0_env, batch]
+      processors: [memory_limiter, resource_detection, resource/vm, filter/dash0_units, transform/semconv, resource/dash0_env, batch]
       exporters: [otlp_http/dash0]
     # Every unit's limits and usage (deploy/eq-unit-limits.py): all of them to Prometheus,
     # Ourios's to Dash0 beside its own process.* metrics.
