@@ -1,0 +1,15 @@
+# Recording rules for the EverQuest dashboard (2026-10-15). No alerts here: the alert files are
+# vm.yml and nocturnal.yml, and every alert in them is critical by design.
+#
+# Fight length, median per target over 7 days, read increase(...[7d]) straight from the span-metrics
+# histogram: 47,000 series at a 5 s export interval, 125 million samples, 34 s per evaluation
+# on this box - and Perses re-ran it every 30 s while the dashboard was open (collapsed panels
+# are queried too), so one panel held a core. This keeps a 5-minute increase per (target, bucket),
+# summed over the reporters and zones, so the panel adds up 2,016 points per series instead.
+# The panel's history starts when this rule was first loaded; nothing before that is recorded.
+groups:
+  - name: everquest-recording
+    interval: 5m
+    rules:
+      - record: everquest:fight_duration_seconds_bucket:increase5m
+        expr: sum by (le, span_name) (increase(everquest_fight_duration_seconds_bucket{everquest_fight_outcome="killed"}[5m]))

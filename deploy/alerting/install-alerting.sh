@@ -71,6 +71,7 @@ systemctl restart alertmanager
 
 # Rules: the VM's from here, the bot's from nocturnal-discord when present.
 install -m 0644 rules-vm.yml /etc/prometheus/rules/vm.yml
+install -m 0644 rules-everquest.yml /etc/prometheus/rules/everquest.yml
 [ -f nocturnal-rules.yml ] && install -m 0644 nocturnal-rules.yml /etc/prometheus/rules/nocturnal.yml
 
 # Prometheus: point at Alertmanager and load the rules directory (idempotent), then reload.

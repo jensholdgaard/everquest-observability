@@ -26,8 +26,10 @@ spec:
         kind: PrometheusLabelValuesVariable
         spec:
           labelName: everquest_group_leader
+          # From the combat series (2026-10-15): this read everquest_group_member, which Zeal
+          # stopped sending in f38820c, so the list held nothing but All.
           matchers:
-          - everquest_group_member
+          - everquest_combat_damage_total
       defaultValue: $__all
   - kind: ListVariable
     spec:
@@ -717,35 +719,17 @@ spec:
                 query: (max by (everquest_raid_target) (max_over_time(everquest_raid_lockout_expiry_seconds[7d])) - time())
                   / 3600 > 0
                 seriesNameFormat: '{{everquest_raid_target}}'
-    stat_group_size:
-      kind: Panel
-      spec:
-        display:
-          name: Group size
-          description: Members in the group, including anyone not running the DPS meter.
-        plugin:
-          kind: StatChart
-          spec:
-            calculation: last-number
-            format:
-              unit: decimal
-              decimalPlaces: 0
-        queries:
-        - kind: TimeSeriesQuery
-          spec:
-            plugin:
-              kind: PrometheusTimeSeriesQuery
-              spec:
-                query: count(count by (everquest_character_name) (everquest_group_member{everquest_group_leader=~"$group"}))
     stat_reporting:
       kind: Panel
       spec:
         display:
           name: Reporting damage
-          description: 'Group members who produced damage in the last 5 minutes. Lower than group size means someone is not
-            running the meter (or has it off) - which is the usual reason a group total looks too low.
-
-            '
+          description: >-
+            Group members who produced damage in the last 5 minutes. Fewer than are in the group
+            means someone is not running the meter (or has it off) - the usual reason a group
+            total looks too low. (Group size and the full roster are gone since 2026-10-15: Zeal
+            stopped sending everquest.group.member in f38820c, and nothing else knows who is in a
+            group without a meter.)
         plugin:
           kind: StatChart
           spec:
@@ -765,8 +749,10 @@ spec:
       kind: Panel
       spec:
         display:
-          name: Roster
-          description: Everyone in the group, whether or not they report telemetry.
+          name: Reporting members
+          description: >-
+            Who in the group sent damage in the last 5 minutes, and their DPS. Only members running
+            the meter appear; see Reporting damage beside it.
         plugin:
           kind: TimeSeriesTable
           spec: {}
@@ -776,8 +762,9 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: max by (everquest_character_name) (everquest_group_member{everquest_group_leader=~"$group"})
-                seriesNameFormat: '{{everquest_character_name}}'
+                query: sum by (everquest_combat_source) (rate(everquest_combat_damage_total{everquest_combat_direction="outgoing",
+                  everquest_combat_source_type="player", everquest_group_leader=~"$group"}[5m])) > 0
+                seriesNameFormat: '{{everquest_combat_source}}'
     stat_collectors_online:
       kind: Panel
       spec:
@@ -944,7 +931,9 @@ spec:
             How long the raid takes on each mob, from the gateway's span-metrics connector over
             every raider's fight spans (everquest_fight_duration): the median across all reports,
             kills only. Two raiders on the same mob are two reports of one fight, which the median
-            absorbs and a count would not.
+            absorbs and a count would not. Read from the recording rule
+            everquest:fight_duration_seconds_bucket:increase5m (deploy/alerting/rules-everquest.yml)
+            since 2026-10-15: straight from the histogram this took 34 s, every 30 s.
         plugin:
           kind: BarChart
           spec:
@@ -960,7 +949,7 @@ spec:
             plugin:
               kind: PrometheusTimeSeriesQuery
               spec:
-                query: topk(15, histogram_quantile(0.5, sum by (le, span_name) (increase(everquest_fight_duration_seconds_bucket{everquest_fight_outcome="killed"}[7d]))) > 30)
+                query: topk(15, histogram_quantile(0.5, sum by (le, span_name) (sum_over_time(everquest:fight_duration_seconds_bucket:increase5m[7d]))) > 30)
                 seriesNameFormat: '{{span_name}}'
     fight_outcomes:
       kind: Panel
@@ -1227,16 +1216,10 @@ spec:
         width: 6
         height: 5
         content:
-          $ref: '#/spec/panels/stat_group_size'
+          $ref: '#/spec/panels/stat_reporting'
       - x: 6
         y: 0
-        width: 6
-        height: 5
-        content:
-          $ref: '#/spec/panels/stat_reporting'
-      - x: 12
-        y: 0
-        width: 12
+        width: 18
         height: 5
         content:
           $ref: '#/spec/panels/group_roster'
