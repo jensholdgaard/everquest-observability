@@ -1,0 +1,10 @@
+[Unit]
+Description=Unit limits to the gateway every 30 s (the host_metrics interval)
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=30s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

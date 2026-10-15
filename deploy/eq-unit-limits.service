@@ -1,0 +1,18 @@
+# One reading of every unit's cgroup limits and usage, posted to the gateway; fired by
+# eq-unit-limits.timer. See deploy/eq-unit-limits.py.
+[Unit]
+Description=Unit memory, task and file-descriptor limits to the gateway (OTLP)
+After=eq-gateway.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/eq-unit-limits
+# Everything it reads is world-readable, so it needs no account of its own on the box.
+DynamicUser=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_INET AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost

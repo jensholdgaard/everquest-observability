@@ -32,6 +32,13 @@ receivers:
       # the same pipelines route metrics to Prometheus and traces to Jaeger.
       grpc:
         endpoint: 127.0.0.1:4321
+  # The box's own small producers that speak OTLP/HTTP but hold no member token - today the
+  # unit-limits timer (deploy/eq-unit-limits.py, 2026-10-15). Localhost only, never proxied by
+  # Caddy, and wired to its own pipelines below rather than the guild's.
+  otlp/local:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4322
 
   # --- The VM itself (2026-09-06) — nothing here is scraped by Prometheus ---------------
   # Box resources straight from /proc and /sys. The utilization gauges are what the
@@ -42,9 +49,15 @@ receivers:
       cpu:
         metrics:
           system.cpu.utilization: { enabled: true }
+          # The box's CPU ceiling: utilization alone does not say how many cores it is of.
+          system.cpu.logical.count: { enabled: true }
       memory:
         metrics:
           system.memory.utilization: { enabled: true }
+          # The ceiling, and what the kernel would still hand out (MemAvailable). There is no
+          # swap, so past this the OOM killer chooses (2026-10-15).
+          system.memory.limit: { enabled: true }
+          system.linux.memory.available: { enabled: true }
       load:
       disk:
       filesystem:
@@ -235,6 +248,19 @@ processors:
     logs:
       log_record:
         - 'resource.attributes["service.name"] == "ourios-server"'
+  # The box's own metrics to Dash0 (2026-10-15): host_metrics as they are, but of the systemd
+  # receiver's per-unit series only Ourios's - the other units are the guild's services, which
+  # stay here. Host series carry no systemd.unit.name and pass.
+  filter/dash0_units:
+    error_mode: ignore
+    metrics:
+      metric:
+        - 'resource.attributes["systemd.unit.name"] != nil and resource.attributes["systemd.unit.name"] != "ourios.service"'
+  resource/dash0_env:
+    attributes:
+      - key: deployment.environment.name
+        value: production
+        action: upsert
   resource/dash0:
     attributes:
       - key: service.name
@@ -424,4 +450,20 @@ service:
     logs/dash0:
       receivers: [otlp]
       processors: [memory_limiter, filter/only_ourios, resource/dash0, batch]
+      exporters: [otlp_http/dash0]
+    # The box under Ourios, to Dash0 as well (2026-10-15): without it Dash0 saw Ourios's memory
+    # climb with nothing to compare it to - not the box's 3.8 GB, not the 1.5 GB MemoryMax.
+    metrics/vm_dash0:
+      receivers: [host_metrics, systemd]
+      processors: [memory_limiter, resource_detection, resource/vm, filter/dash0_units, resource/dash0_env, batch]
+      exporters: [otlp_http/dash0]
+    # Every unit's limits and usage (deploy/eq-unit-limits.py): all of them to Prometheus,
+    # Ourios's to Dash0 beside its own process.* metrics.
+    metrics/limits:
+      receivers: [otlp/local]
+      processors: [memory_limiter, resource_detection, batch]
+      exporters: [otlp_http/prometheus]
+    metrics/limits_dash0:
+      receivers: [otlp/local]
+      processors: [memory_limiter, filter/only_ourios, resource/dash0, resource_detection, batch]
       exporters: [otlp_http/dash0]
